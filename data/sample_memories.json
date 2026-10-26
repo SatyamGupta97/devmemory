@@ -1,0 +1,96 @@
+[
+  {
+    "content": "The user service uses PostgreSQL 15 for persistence.",
+    "category": "decision",
+    "source": "architecture-review-2026-03",
+    "project": "payments-api",
+    "confidence": 0.9
+  },
+  {
+    "content": "The user service uses MySQL for persistence.",
+    "category": "decision",
+    "source": "onboarding-notes",
+    "project": "payments-api",
+    "confidence": 0.4
+  },
+  {
+    "content": "We disabled Redis caching for user records because stale cache entries caused wrong account balances.",
+    "category": "failure",
+    "source": "incident-142",
+    "project": "payments-api",
+    "confidence": 0.95
+  },
+  {
+    "content": "Redis caching was disabled for user records after stale cache entries produced incorrect account balances.",
+    "category": "failure",
+    "source": "postmortem-142",
+    "project": "payments-api",
+    "confidence": 0.9
+  },
+  {
+    "content": "Never log full card numbers or CVV values; use the last four digits only.",
+    "category": "constraint",
+    "source": "security-guideline",
+    "project": "payments-api",
+    "confidence": 1.0
+  },
+  {
+    "content": "All new endpoints must return RFC 7807 problem+json bodies on error.",
+    "category": "convention",
+    "source": "api-guidelines",
+    "project": "payments-api"
+  },
+  {
+    "content": "Stripe webhook handlers must be idempotent because Stripe retries deliveries.",
+    "category": "constraint",
+    "source": "incident-98",
+    "project": "payments-api",
+    "confidence": 0.85
+  },
+  {
+    "content": "The reporting service runs on the same PostgreSQL cluster as the user service.",
+    "category": "fact",
+    "source": "infra-inventory",
+    "project": "analytics",
+    "confidence": 0.7
+  },
+  {
+    "content": "The reporting service uses DuckDB for local aggregation during nightly jobs.",
+    "category": "decision",
+    "source": "analytics-rfc-4",
+    "project": "analytics",
+    "confidence": 0.8
+  },
+  {
+    "content": "Nightly aggregation must finish before 06:00 UTC to leave time for downstream exports.",
+    "category": "constraint",
+    "source": "ops-runbook",
+    "project": "analytics"
+  },
+  {
+    "content": "We migrated from Celery to Dramatiq for background jobs in 2025.",
+    "category": "decision",
+    "source": "eng-blog-draft",
+    "project": "analytics",
+    "confidence": 0.75
+  },
+  {
+    "content": "Background jobs are queued through Celery with Redis as the broker.",
+    "category": "decision",
+    "source": "old-wiki-page",
+    "project": "analytics",
+    "confidence": 0.3
+  },
+  {
+    "content": "Use structured logging with request IDs on every service.",
+    "category": "convention",
+    "source": "platform-team",
+    "project": "payments-api"
+  },
+  {
+    "content": "Python 3.8 is the runtime for all backend services.",
+    "category": "constraint",
+    "source": "legacy-platform-doc",
+    "project": "analytics"
+  }
+]
