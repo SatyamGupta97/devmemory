@@ -15,7 +15,8 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 1 complete: memories are stored in SQLite and survive restarts.
+Phase 2 complete: memories can be created, filtered, updated, superseded, deleted and
+imported in bulk, and all of it persists in SQLite.
 
 ## Repository layout
 
@@ -93,8 +94,15 @@ must remain usable without any model access.
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | `GET` | `/health` | Liveness check |
-| `POST` | `/api/memories` | Add a memory (returns `201`) |
+| `POST` | `/api/memories` | Add a memory (`201`) |
 | `GET` | `/api/memories` | List memories, newest first |
+| `POST` | `/api/memories/import` | Import a batch atomically (`201`) |
+| `GET` | `/api/memories/{id}` | Fetch one memory, or `404` |
+| `PATCH` | `/api/memories/{id}` | Partial update |
+| `DELETE` | `/api/memories/{id}` | Delete (`204`), `404` if absent, `409` if referenced |
+
+`GET /api/memories` accepts `project` and `category` query filters. Unknown values
+return an empty list for `project`; an invalid `category` returns `422`.
 
 Add a memory:
 
@@ -110,9 +118,51 @@ curl -X POST http://127.0.0.1:8000/api/memories \
   }'
 ```
 
+Import a batch:
+
+```bash
+# wrap the array: the endpoint takes {"memories": [...]}
+python3 -c "import json;print(json.dumps({'memories': json.load(open('../data/sample_memories.json'))}))" \
+  | curl -X POST http://127.0.0.1:8000/api/memories/import \
+      -H 'Content-Type: application/json' --data-binary @-
+```
+
+The batch is **all-or-nothing**: `{"memories": [...]}` is validated entry by entry, and a
+single bad row rejects the whole request with `422` before anything is written. A partial
+import would leave the user unable to tell what landed, and re-importing would duplicate
+it. Batches are capped at 500 entries.
+
+Partial update:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/api/memories/<id> \
+  -H 'Content-Type: application/json' \
+  -d '{"status": "superseded", "superseded_by": "<newer-id>"}'
+```
+
 Memory fields: `content`, `category` (`decision` | `constraint` | `failure` |
 `convention` | `fact`), `source`, `project`, optional `confidence` (0–1). The server
 assigns `id`, `created_at`, `updated_at`, `status`, and `superseded_by`.
+
+### Supersede rules
+
+Old decisions are preserved, never rewritten. `PATCH` enforces:
+
+- `superseded_by` must point at an existing memory, and not at itself.
+- Setting `superseded_by` requires `status: "superseded"`.
+- Reactivating (`status: "active"`) requires clearing `superseded_by` to `null`.
+- Deleting a memory that another memory names as its replacement returns `409` and lists
+  the blocking memory. Nothing is silently unlinked.
+
+### Status codes
+
+| Code | Meaning here |
+| ---- | ------------ |
+| `201` | memory or batch created |
+| `204` | deleted, empty body |
+| `404` | no memory with that id |
+| `409` | the change would break a link between memories |
+| `422` | body parsed but is invalid, or conflicts with a stored-data rule |
 
 Invalid input returns `422` with the offending field named. Blank or whitespace-only
 content is rejected by both Pydantic and a SQLite `CHECK` constraint.
@@ -147,6 +197,7 @@ runtime constraint. A test asserts it always validates against the API schema.
 | 0 | Project skeleton, FastAPI health endpoint |
 | 1 | Memory model + persistent SQLite storage |
 | 2 | Memory CRUD + import APIs |
+
 | 3 | Memory Explorer UI |
 | 4 | Memory health checks (duplicates, contradictions, stale, metadata) |
 | 5 | Keyword retrieval baseline |

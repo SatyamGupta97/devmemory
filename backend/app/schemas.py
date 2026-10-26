@@ -7,8 +7,9 @@ send, and vice versa.
 
 from datetime import datetime
 from enum import Enum
+from typing import ClassVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class MemoryCategory(str, Enum):
@@ -73,3 +74,65 @@ class Memory(BaseModel):
     confidence: float | None = None
     status: MemoryStatus = MemoryStatus.ACTIVE
     superseded_by: str | None = None
+
+
+class MemoryUpdate(BaseModel):
+    """Partial update. Omitted fields are left untouched.
+
+    Optional-typed fields serve two different meanings in PATCH:
+    a field absent from the request is "leave as is", while an explicit ``null``
+    on a nullable field is "clear it". Validation below rejects an explicit
+    ``null`` for columns that cannot be empty.
+    """
+
+    content: str | None = Field(default=None, min_length=1, max_length=4000)
+    category: MemoryCategory | None = None
+    source: str | None = Field(default=None, min_length=1, max_length=200)
+    project: str | None = Field(default=None, min_length=1, max_length=100)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    status: MemoryStatus | None = None
+    superseded_by: str | None = None
+
+    # Columns that are NOT NULL and therefore cannot be cleared with null.
+    REQUIRED_WHEN_PRESENT: ClassVar[tuple[str, ...]] = (
+        "content",
+        "category",
+        "source",
+        "project",
+        "status",
+    )
+
+    @field_validator("content", "source", "project", mode="before")
+    @classmethod
+    def strip_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @model_validator(mode="after")
+    def validate_update(self) -> "MemoryUpdate":
+        if not self.model_fields_set:
+            raise ValueError("provide at least one field to update")
+
+        for field in self.REQUIRED_WHEN_PRESENT:
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"'{field}' cannot be null")
+
+        return self
+
+
+class MemoryImportRequest(BaseModel):
+    """Bulk import payload.
+
+    Capped at 500 entries: the import runs as a single transaction and looks the
+    inserted rows back up with one ``IN (...)`` query, and SQLite's bound
+    parameter limit is 999. Validating the whole batch here means a bad row is
+    rejected before any write happens.
+    """
+
+    memories: list[MemoryCreate] = Field(min_length=1, max_length=500)
+
+
+class MemoryImportResult(BaseModel):
+    imported: int
+    ids: list[str]
