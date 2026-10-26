@@ -15,8 +15,10 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 3 complete: a React UI covers the full memory lifecycle — browse, search, filter,
-inspect, add, edit, delete, and JSON import — against the live API.
+Phase 4 complete: a deterministic health check inspects the memory collection for
+duplicates, near-duplicates, contradictions, stale entries and weak metadata. Every
+finding carries the evidence behind it. A React UI covers the full memory lifecycle
+against the live API.
 
 ## Repository layout
 
@@ -30,6 +32,8 @@ devmemory/
       schemas.py      Pydantic request/response models
       api/            HTTP routers
       services/       Business logic
+        health.py       deterministic health analysis
+        text.py         normalisation and similarity
     tests/            pytest suite
     requirements.txt
     .env.example
@@ -127,17 +131,9 @@ npm run typecheck
 npm run build
 ```
 
-## Run the tests
-
-```bash
-cd backend
-source .venv/bin/activate
-pytest -v
-```
-
-Tests also run from the repository root (`backend/.venv/bin/pytest -v`). The shared
-configuration lives in `pytest.ini`, which puts `backend/` on `sys.path` so test modules
-can import the service as `from app.main import app`.
+Backend tests also run from the repository root (`backend/.venv/bin/pytest -v`). The
+shared configuration lives in `pytest.ini`, which puts `backend/` on `sys.path` so test
+modules can import the service as `from app.main import app`.
 
 ## Environment variables
 
@@ -175,6 +171,7 @@ CORS is not authentication: it constrains browsers, not other clients.
 | `GET` | `/api/memories/{id}` | Fetch one memory, or `404` |
 | `PATCH` | `/api/memories/{id}` | Partial update |
 | `DELETE` | `/api/memories/{id}` | Delete (`204`), `404` if absent, `409` if referenced |
+| `GET` | `/api/health` | Run the health check and return the findings |
 
 `GET /api/memories` accepts `project` and `category` query filters. Unknown values
 return an empty list for `project`; an invalid `category` returns `422`.
@@ -249,6 +246,89 @@ problems later phases detect: an exact duplicate, a near-duplicate, a contradict
 database decision, a superseded-vs-current queue decision, missing metadata, and a stale
 runtime constraint. A test asserts it always validates against the API schema.
 
+## Memory health check
+
+`GET /api/health` analyses the stored memories and returns findings. It is
+**read-only**: it never modifies, deletes or rewrites a memory. Every finding is a
+suggestion for a human to act on.
+
+```bash
+curl http://127.0.0.1:8000/api/health
+```
+
+Add `?project=payments-api` to scope the analysis to one namespace.
+
+### What it detects
+
+| Issue type | Severity | What it means |
+| ---------- | -------- | ------------- |
+| `exact_duplicate` | medium | Two memories are identical once case and punctuation are ignored |
+| `near_duplicate` | low | The same statement in different words; they do not contradict each other |
+| `potential_contradiction` | medium | The same subject, different values — they cannot all be current |
+| `potentially_stale` | low–high | Old enough that it may no longer reflect the project |
+| `superseded_memory` | info | A retired decision, kept on purpose so history stays visible |
+| `missing_confidence` | low | A decision or constraint with no confidence recorded |
+| `low_confidence` | medium | A decision the memory itself flags as doubtful |
+| `unreliable_source` | medium | A source nobody can go and check |
+| `placeholder_project` | medium | Filed under a namespace like `unknown` |
+| `vague_content` | low | Too short to carry useful meaning |
+| `suspicious_content` | high | Reads like a command rather than a record of project knowledge |
+
+### Why some things are deliberately not flagged
+
+- **Duplicates are only detected within a project.** The same convention stated in two
+  projects is legitimate, not a duplicate.
+- **Contradictions need a shared subject.** Two memories are only compared when they
+  share context tokens, so "the user service uses PostgreSQL" and "the reporting
+  service uses DuckDB" are not treated as a conflict.
+- **A year difference is not a contradiction.** "Migrated in 2025" versus "migrated in
+  2024" states *when*, not *what*.
+- **A contradiction is a candidate, not a verdict.** Two memories can disagree and both
+  be right — different services, different environments, different points in time. Each
+  contradiction finding says this in its `uncertainty` field.
+- **Staleness is age only.** The schema records no review date, so every stale finding
+  says that age is the only available signal.
+
+### How the rules work
+
+Duplicate and near-duplicate detection use a normalised text comparison plus a token
+overlap score, with the stronger of the two winning. Contradiction detection is
+different: it looks for two memories that share a *subject* but name different
+*values* — so it catches a contradiction even when the two sentences share no
+particular words.
+
+The thresholds are configuration, not magic numbers, and were tuned against the sample
+dataset: the clearest near-duplicate pair scores `0.83` and the next highest
+non-contradiction pair scores `0.60`, so `0.78` separates them. Override any of them:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `DEVMEMORY_HEALTH_NEAR_DUPLICATE_SIMILARITY` | `0.78` | Minimum similarity for a near-duplicate |
+| `DEVMEMORY_HEALTH_CONTRADICTION_CONTEXT_OVERLAP` | `0.60` | Minimum shared subject for a contradiction |
+| `DEVMEMORY_HEALTH_CONTRADICTION_MIN_SHARED_TOKENS` | `2` | How many shared words are needed |
+| `DEVMEMORY_HEALTH_STALE_AFTER_DAYS` | `540` | Age at which a memory is reported stale |
+| `DEVMEMORY_HEALTH_VERY_STALE_AFTER_DAYS` | `900` | Age at which it is reported severely stale |
+| `DEVMEMORY_HEALTH_LOW_CONFIDENCE` | `0.5` | Confidence at or below which a decision is doubtful |
+| `DEVMEMORY_HEALTH_VAGUE_CONTENT_LENGTH` | `30` | Content shorter than this is too vague |
+
+### Memory timestamps
+
+`POST /api/memories` and the import endpoint accept an optional `created_at`. Real
+memory systems hold memories captured weeks or months ago, and without the original
+date "stale" could never be detected. When it is omitted the server stamps the current
+time.
+
+```json
+{
+  "content": "Background jobs are queued through Celery with Redis as the broker.",
+  "category": "decision",
+  "source": "old-wiki-page",
+  "project": "analytics",
+  "confidence": 0.3,
+  "created_at": "2023-05-19T09:00:00+00:00"
+}
+```
+
 ## UI architecture notes
 
 - **`api/client.ts` is the only place that calls `fetch`.** `fetch` does not reject on
@@ -278,21 +358,3 @@ runtime constraint. A test asserts it always validates against the API schema.
   similarity scoring belong to the analysis layer, so its rules can change without
   rewriting stored memories.
 
-## Roadmap
-
-| Phase | Deliverable |
-| ----- | ----------- |
-| 0 | Project skeleton, FastAPI health endpoint |
-| 1 | Memory model + persistent SQLite storage |
-| 2 | Memory CRUD + import APIs |
-
-| 3 | Memory Explorer UI |
-| 4 | Memory health checks (duplicates, contradictions, stale, metadata) |
-| 5 | Keyword retrieval baseline |
-| 6 | Embedding-based semantic retrieval |
-| 7 | Retrieval evaluation benchmark (precision@k, recall@k, MRR) |
-| 8 | AI-assisted memory inspector |
-| 9 | Consolidated inspector report |
-| 10 | End-to-end tests and usability pass |
-| 11 | Optional advanced features |
-| 12 | Documentation, deployment, submission |

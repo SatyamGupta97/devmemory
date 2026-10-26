@@ -52,6 +52,21 @@ def _row_to_memory(row: sqlite3.Row) -> Memory:
     return Memory.model_validate(dict(row))
 
 
+def _created_at(payload: MemoryCreate, fallback: str) -> str:
+    """Use the caller-supplied original timestamp when there is one.
+
+    Imported memories often carry the date they were originally captured.
+    Keeping that date is what makes "this memory might be stale" a question the
+    tool can answer.
+    """
+    if payload.created_at is None:
+        return fallback
+    created = payload.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return created.astimezone(timezone.utc).isoformat()
+
+
 def create_memory(conn: sqlite3.Connection, payload: MemoryCreate) -> Memory:
     """Insert a memory and return it as stored."""
     memory_id = str(uuid4())
@@ -70,7 +85,7 @@ def create_memory(conn: sqlite3.Connection, payload: MemoryCreate) -> Memory:
             payload.category.value,
             payload.source,
             payload.project,
-            now,
+            _created_at(payload, now),
             now,
             payload.confidence,
         ),
@@ -241,7 +256,7 @@ def import_memories(
                     payload.category.value,
                     payload.source,
                     payload.project,
-                    now,
+                    _created_at(payload, now),
                     now,
                     payload.confidence,
                 ),

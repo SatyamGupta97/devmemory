@@ -4,10 +4,12 @@ import {
   API_BASE_URL,
   createMemory,
   deleteMemory,
+  getHealthReport,
   importMemories,
   listMemories,
   updateMemory,
 } from "./api/client";
+import { HealthPanel } from "./components/HealthPanel";
 import { ImportPanel } from "./components/ImportPanel";
 import { MemoryDetail } from "./components/MemoryDetail";
 import { MemoryForm } from "./components/MemoryForm";
@@ -15,6 +17,7 @@ import { MemoryList } from "./components/MemoryList";
 import { StatsBar } from "./components/StatsBar";
 import { StatusMessage } from "./components/StatusMessage";
 import type {
+  HealthReport,
   Memory,
   MemoryCategory,
   MemoryCreateInput,
@@ -39,6 +42,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("browse");
   const [busy, setBusy] = useState(false);
+
+  const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -145,6 +152,21 @@ export default function App() {
       setNotice(`Imported ${result.imported} memories.`);
     });
 
+  const runHealthCheck = async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      // Scoped with the same project filter as the list, so every id in the
+      // report refers to a memory that is actually on screen.
+      const report = await getHealthReport(projectFilter || undefined);
+      setHealthReport(report);
+    } catch (error) {
+      setHealthError(errorMessage(error));
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -226,7 +248,32 @@ export default function App() {
         >
           {mode === "create" ? "Close" : "New memory"}
         </button>
+
+        <button
+          type="button"
+          className="button"
+          onClick={() => void runHealthCheck()}
+          disabled={healthLoading}
+        >
+          {healthLoading ? "Checking…" : "Run health check"}
+        </button>
       </div>
+
+      {healthError && (
+        <StatusMessage tone="error" onDismiss={() => setHealthError(null)}>
+          {healthError}
+        </StatusMessage>
+      )}
+
+      {healthReport && (
+        <HealthPanel
+          report={healthReport}
+          onSelectMemory={(id) => {
+            setSelectedId(id);
+            setMode("browse");
+          }}
+        />
+      )}
 
       <div className="layout">
         <section className="panel" aria-label="Memory list panel">

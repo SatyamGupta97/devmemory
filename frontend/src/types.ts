@@ -54,3 +54,42 @@ export interface ImportResult {
   imported: number;
   ids: string[];
 }
+
+/** Health check types, mirroring the backend's health schemas. */
+
+export type IssueType =
+  | "exact_duplicate"
+  | "near_duplicate"
+  | "potential_contradiction"
+  | "potentially_stale"
+  | "superseded_memory"
+  | "missing_confidence"
+  | "low_confidence"
+  | "unreliable_source"
+  | "placeholder_project"
+  | "vague_content"
+  | "suspicious_content";
+
+export type Severity = "high" | "medium" | "low" | "info";
+
+export interface HealthFinding {
+  id: string;
+  issue_type: IssueType;
+  severity: Severity;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  memory_ids: string[];
+  suggested_action: string;
+  uncertainty: string | null;
+}
+
+export interface HealthReport {
+  generated_at: string;
+  analyzer: string;
+  total_memories: number;
+  projects: string[];
+  summary: Record<string, number>;
+  findings: HealthFinding[];
+  limitations: string[];
+}

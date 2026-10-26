@@ -199,6 +199,72 @@ Start the backend, start the frontend, open <http://localhost:5173>.
 
 ---
 
+# Manual checklist — Memory Health Check (Phase 4)
+
+Automated tests confirm the rules fire on the data they were written for. These
+steps confirm the findings are *legible* — that a developer can read a finding and
+understand what to do, without reading the source.
+
+With the backend and frontend running, open <http://localhost:5173> and load
+`data/sample_memories.json` first.
+
+### Run it
+
+- [ ] Click **Run health check** → a panel appears below the toolbar.
+- [ ] The panel says `Analyzer: deterministic-rules — no language model was used.`
+      This wording matters: the user must know whether a model was involved.
+- [ ] The summary row shows counts by type (exact duplicate, potential
+      contradiction, potentially stale, and so on).
+
+### Read a finding
+
+- [ ] Each finding has a severity badge (High / Medium / Low / Info) and a
+      coloured left border.
+- [ ] Click **Evidence (n)** → it expands to show the actual memory contents
+      that triggered the finding, with their ids and namespaces.
+- [ ] Every finding has a **Suggested action**.
+- [ ] Contradiction findings also show an **Uncertainty** note explaining that a
+      contradiction is a candidate, not a verdict.
+
+### Check the expected findings against the sample data
+
+With `data/sample_memories.json` loaded, the summary should show roughly:
+
+| Issue type | Expected | Why |
+| ---------- | -------- | --- |
+| `exact_duplicate` | 1 | "The user service uses PostgreSQL 15…" appears twice |
+| `near_duplicate` | 1 | The two Redis-caching memories |
+| `potential_contradiction` | 3 | PostgreSQL vs MySQL, Celery vs Dramatiq, Python 3.8 vs 3.11 |
+| `potentially_stale` | ~7 | The deliberately old entries |
+| `unreliable_source` | ~4 | `chat`, `old-wiki-page`, `eng-blog-draft`, `legacy-platform-doc` |
+| `suspicious_content` | 1 | The "Ignore all previous instructions…" memory |
+
+- [ ] Click a memory id under **Affected memories** → that memory is selected in
+      the detail panel, so you can check the evidence yourself.
+- [ ] Open **What this check cannot tell you** → the limitations are listed.
+
+### Confirm it is read-only
+
+- [ ] Note the memory count in the stats row.
+- [ ] Run the health check three times.
+- [ ] The count is unchanged, and no memory was edited or deleted.
+- [ ] Restart the backend — the same findings come back.
+
+### Project scope
+
+- [ ] Set the project filter to `analytics`, then run the health check.
+- [ ] The panel says `7 memories checked across 1 project` and every finding
+      refers only to `analytics` memories.
+
+### The case worth checking by hand
+
+- [ ] Find the **Potential contradiction** covering the PostgreSQL/MySQL pair.
+- [ ] It lists **three** memory ids, not two: the two duplicate memories and the
+      MySQL one. One underlying problem should be one finding.
+- [ ] The evidence shows all three contents.
+
+---
+
 ## How to report a failure
 
 Please include:

@@ -46,6 +46,10 @@ class MemoryCreate(BaseModel):
     source: str = Field(min_length=1, max_length=200)
     project: str = Field(min_length=1, max_length=100)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Optional original timestamp. Real memory systems hold memories that were
+    # captured weeks ago, and without that date "stale" can never be detected.
+    # When omitted, the server stamps the current time.
+    created_at: datetime | None = None
 
     @field_validator("content", "source", "project", mode="before")
     @classmethod
@@ -136,3 +140,60 @@ class MemoryImportRequest(BaseModel):
 class MemoryImportResult(BaseModel):
     imported: int
     ids: list[str]
+
+
+# --- health check -----------------------------------------------------------
+
+
+class IssueType(str, Enum):
+    """The kind of quality problem a finding describes."""
+
+    EXACT_DUPLICATE = "exact_duplicate"
+    NEAR_DUPLICATE = "near_duplicate"
+    POTENTIAL_CONTRADICTION = "potential_contradiction"
+    POTENTIALLY_STALE = "potentially_stale"
+    SUPERSEDED_MEMORY = "superseded_memory"
+    MISSING_CONFIDENCE = "missing_confidence"
+    LOW_CONFIDENCE = "low_confidence"
+    UNRELIABLE_SOURCE = "unreliable_source"
+    PLACEHOLDER_PROJECT = "placeholder_project"
+    VAGUE_CONTENT = "vague_content"
+    SUSPICIOUS_CONTENT = "suspicious_content"
+
+
+class Severity(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class HealthFinding(BaseModel):
+    """One inspectable finding.
+
+    Every finding carries the memories it came from and the evidence that
+    produced it, so a developer can check the tool's reasoning instead of
+    trusting it.
+    """
+
+    id: str
+    issue_type: IssueType
+    severity: Severity
+    title: str
+    explanation: str
+    evidence: list[str]
+    memory_ids: list[str]
+    suggested_action: str
+    uncertainty: str | None = None
+
+
+class HealthReport(BaseModel):
+    """The result of one health check run."""
+
+    generated_at: datetime
+    analyzer: str
+    total_memories: int
+    projects: list[str]
+    summary: dict[str, int]
+    findings: list[HealthFinding]
+    limitations: list[str]

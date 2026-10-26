@@ -5,6 +5,7 @@
  */
 
 import type {
+  HealthReport,
   ImportResult,
   Memory,
   MemoryCategory,
@@ -142,4 +143,11 @@ export async function importMemories(
     method: "POST",
     body: JSON.stringify({ memories }),
   });
+}
+
+export async function getHealthReport(
+  project?: string,
+): Promise<HealthReport> {
+  const query = project ? `?project=${encodeURIComponent(project)}` : "";
+  return request<HealthReport>(`/api/health${query}`);
 }
