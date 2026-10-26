@@ -8,8 +8,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import memories
+from app.config import get_cors_origins
 from app.db import init_db
 
 SERVICE_NAME = "devmemory-api"
@@ -38,6 +40,19 @@ app = FastAPI(
 )
 
 app.include_router(memories.router)
+
+# A browser enforces same-origin policy: a page served from localhost:5173 may
+# not read a response from localhost:8000 unless the *server* says so. This
+# middleware adds that permission. It is not authentication, and it does not
+# protect the API from non-browser clients.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_cors_origins(),
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
+    # No cookies or auth headers are used, so credentials stay off.
+    allow_credentials=False,
+)
 
 
 @app.get("/health", tags=["system"])

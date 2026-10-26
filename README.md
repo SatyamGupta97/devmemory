@@ -15,8 +15,8 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 2 complete: memories can be created, filtered, updated, superseded, deleted and
-imported in bulk, and all of it persists in SQLite.
+Phase 3 complete: a React UI covers the full memory lifecycle — browse, search, filter,
+inspect, add, edit, delete, and JSON import — against the live API.
 
 ## Repository layout
 
@@ -33,15 +33,23 @@ devmemory/
     tests/            pytest suite
     requirements.txt
     .env.example
+  frontend/           React + Vite + TypeScript UI
+    src/
+      App.tsx         page state and orchestration
+      api/client.ts   typed HTTP client, single place for errors
+      components/     presentational components
+      types.ts        mirrors the backend schemas
+    .env.example
   data/
     sample_memories.json
+  scripts/
+    smoke_phase2.py   end-to-end API checks
   pytest.ini
   .gitignore
   README.md
 ```
 
-`frontend/` and `docs/` are added in later phases, when the feature that needs them
-exists.
+`docs/` arrives with the final write-up.
 
 ## Requirements
 
@@ -57,7 +65,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run the server
+## Run the app
+
+Two processes: the API and the UI. Start the API first (the UI fails loudly, and
+explains why, if it cannot reach it).
+
+**Terminal 1 — API**
 
 ```bash
 cd backend
@@ -67,6 +80,29 @@ uvicorn app.main:app --reload --port 8000
 
 - Health check: <http://127.0.0.1:8000/health>
 - Interactive API docs: <http://127.0.0.1:8000/docs>
+
+**Terminal 2 — UI**
+
+```bash
+cd frontend
+npm install          # first time only
+npm run dev
+```
+
+Open <http://localhost:5173>. To start with demo data, use *Import memories* in the UI
+and load `data/sample_memories.json`.
+
+If the API runs somewhere other than `http://127.0.0.1:8000`, copy
+`frontend/.env.example` to `frontend/.env.local` and set `VITE_API_BASE_URL`.
+
+### Frontend tests, typecheck and build
+
+```bash
+cd frontend
+npm test          # Vitest + React Testing Library
+npm run typecheck
+npm run build
+```
 
 ## Run the tests
 
@@ -85,9 +121,25 @@ can import the service as `from app.main import app`.
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
 | `DEVMEMORY_DB_PATH` | `backend/devmemory.db` | SQLite file location. Tests point this at a temp file. |
+| `DEVMEMORY_CORS_ORIGINS` | Vite dev server origins | Comma-separated browser origins allowed to call the API. |
+
+Frontend variables must be prefixed `VITE_` to reach the browser, so never put secrets here:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `VITE_API_BASE_URL` | `http://127.0.0.1:8000` | Where the UI looks for the API |
 
 Model provider settings arrive in a later phase. Nothing is required today, and the app
 must remain usable without any model access.
+
+### CORS
+
+A browser blocks a page on `localhost:5173` from reading a response from
+`localhost:8000` unless the server opts in. `DEVMEMORY_CORS_ORIGINS` is an explicit
+allow-list, never `*`, because a wildcard lets any page on the internet read this API's
+responses. Deploying the UI means adding its origin to that list.
+
+CORS is not authentication: it constrains browsers, not other clients.
 
 ## API
 
@@ -173,6 +225,19 @@ content is rejected by both Pydantic and a SQLite `CHECK` constraint.
 problems later phases detect: an exact duplicate, a near-duplicate, a contradictory
 database decision, a superseded-vs-current queue decision, missing metadata, and a stale
 runtime constraint. A test asserts it always validates against the API schema.
+
+## UI architecture notes
+
+- **`api/client.ts` is the only place that calls `fetch`.** `fetch` does not reject on
+  4xx/5xx, so every response is checked explicitly, and a network failure (no response at
+  all) is reported differently from an HTTP error.
+- **Filters go to the server; search stays in the browser.** Server filters will still be
+  correct when pagination arrives; search filters the rows already loaded so typing is
+  instant and does not fire a request per keystroke.
+- **After every mutation the list is re-fetched** instead of being patched locally. The
+  server stays the single source of truth; at this scale the extra request is free.
+- **Loading, empty, search-miss, and error are four distinct states**, not one spinner.
+  An empty library and a failed request look completely different to the user.
 
 ## Data model notes
 
