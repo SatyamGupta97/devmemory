@@ -43,7 +43,10 @@ devmemory/
   data/
     sample_memories.json
   scripts/
-    smoke_phase2.py   end-to-end API checks
+    smoke_phase2.py              end-to-end API checks
+    check_frontend_wiring.py     frontend <-> backend integration checks
+  docs/
+    testing.md                   test guide and manual checklists
   pytest.ini
   .gitignore
   README.md
@@ -63,6 +66,26 @@ cd backend
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+## Testing
+
+See **[docs/testing.md](docs/testing.md)** for the full guide: how to run each layer
+(backend tests, frontend tests, API smoke test, wiring check) and a step-by-step manual
+checklist for the Memory Explorer UI.
+
+```bash
+# backend
+cd backend && source .venv/bin/activate && pytest -v
+
+# frontend
+cd frontend && npm test && npm run typecheck
+
+# API contract, with the server running
+python3 scripts/smoke_phase2.py
+
+# frontend <-> backend wiring, with both running
+python3 scripts/check_frontend_wiring.py
 ```
 
 ## Run the app

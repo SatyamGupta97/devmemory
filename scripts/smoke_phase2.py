@@ -12,7 +12,7 @@ Usage:
     python3 scripts/smoke_phase2.py
     python3 scripts/smoke_phase2.py --base-url http://127.0.0.1:8013
 
-Each run uses its own project namespace (demo-<epoch>), so it is safe to run
+Each run uses its own project namespace (demo-<random>), so it is safe to run
 repeatedly and it never touches your real memories.
 """
 
@@ -21,9 +21,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 import urllib.error
 import urllib.request
+from uuid import uuid4
 
 MEMORIES = [
     {
@@ -114,7 +114,10 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
-    project = f"demo-{int(time.time())}"
+    # A uuid, not a timestamp: two runs started within the same second would
+    # otherwise share a namespace, and the second run's rows would inflate the
+    # first run's counts.
+    project = f"demo-{uuid4().hex[:12]}"
     results = Results()
 
     print(f"Target: {base}")
@@ -135,6 +138,13 @@ def main() -> int:
     memories = [{**m, "project": project} for m in MEMORIES]
 
     print("1. Bulk import")
+    # Guard: if the namespace were ever reused, later counts would be inflated
+    # and the failures would look mysterious. Catch it here instead.
+    status, existing = call(base, "GET", f"/api/memories?project={project}")
+    if status != 200 or existing:
+        print(f"Namespace '{project}' is not empty; refusing to continue.")
+        return 2
+
     status, body = call(base, "POST", "/api/memories/import", {"memories": memories})
     results.check("POST /api/memories/import", 201, status, status == 201)
     imported = body["ids"] if isinstance(body, dict) else []
