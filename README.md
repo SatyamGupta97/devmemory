@@ -66,6 +66,10 @@ source .venv/bin/activate
 pytest -v
 ```
 
+Tests also run from the repository root (`backend/.venv/bin/pytest -v`). The shared
+configuration lives in `pytest.ini`, which puts `backend/` on `sys.path` so test modules
+can import the service as `from app.main import app`.
+
 ## Environment variables
 
 See `backend/.env.example`. Nothing is required in Phase 0. Model provider settings are
