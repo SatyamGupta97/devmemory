@@ -931,6 +931,12 @@ a:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* These sit directly under the run buttons, so they need their own top gap. */
+.benchmark-compare,
+.benchmark-single {
+  margin-top: 16px;
+}
+
 .embedding-heading {
   margin: 0 0 6px;
   font-size: 0.72rem;
