@@ -7,6 +7,7 @@
 import type {
   AiAnalysisReport,
   AiStatus,
+  InspectorReport,
   BenchmarkDefinition,
   BenchmarkReport,
   EmbeddingStatus,
@@ -174,6 +175,25 @@ export async function retrieveMemories(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function getReport(project?: string): Promise<InspectorReport> {
+  const query = project ? `?project=${encodeURIComponent(project)}` : "";
+  return request<InspectorReport>(`/api/report${query}`);
+}
+
+/** Download URL for the same report, rendered by the API.
+ *
+ * Linking to the API rather than building a blob in the browser keeps one
+ * renderer: the exported document cannot drift from the one on screen.
+ */
+export function reportExportUrl(
+  format: "markdown" | "json",
+  project?: string,
+): string {
+  const params = new URLSearchParams({ format });
+  if (project) params.set("project", project);
+  return `${API_BASE_URL}/api/report/export?${params.toString()}`;
 }
 
 export async function getAiStatus(): Promise<AiStatus> {

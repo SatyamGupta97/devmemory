@@ -434,6 +434,85 @@ Both servers running, sample data imported.
 
 ---
 
+# Manual checklist — Inspector Report (Phase 9)
+
+The report is the demo centrepiece, so these checks are about whether a reader who does
+not trust you can still verify the numbers.
+
+Both servers running, sample data imported, vectors indexed.
+
+### Open it
+
+- [ ] Click **Inspector report** in the toolbar → the panel loads (it may take a second;
+      it runs the benchmark).
+- [ ] The header reads `19 memories in 2 projects` and says nothing here is illustrative.
+- [ ] **How this was measured** appears *above* the numbers: benchmark v1 · 10 queries ·
+      k=5, embedding provider `local` / `hashed-ngrams-1024`, vectors indexed, AI not
+      consulted.
+- [ ] A yellow warning says the retrieval numbers come from a surface-form provider and
+      are a lower bound.
+
+### Check the numbers are real
+
+- [ ] Inventory matches the memory list: `payments-api` 11, `analytics` 7, `unknown` 1.
+- [ ] Finding counts match what **Run health check** shows for the same scope.
+- [ ] Benchmark figures match what **Benchmark** shows: keyword P@5 `0.727`, semantic
+      `0.660`.
+- [ ] Add one memory, reopen the report → the total increments by exactly one. Nothing is
+      cached or hardcoded.
+
+### Recommendations
+
+- [ ] The first recommendation is the **high** priority one about untrusted content.
+- [ ] Each recommendation states a count that matches a finding ("Resolve 3 potential
+      contradiction(s)").
+- [ ] The semantic-vs-keyword recommendation says to compare precision before switching —
+      it must not claim semantic is simply better.
+
+### Exports
+
+- [ ] Click **Export Markdown** → a `.md` file downloads and opens.
+- [ ] It begins with **How this was measured**, then inventory, findings, benchmark,
+      recommendations, limitations.
+- [ ] It contains `hashed-ngrams-1024`, the benchmark query count, and `k`.
+- [ ] Click **Export JSON** → valid JSON whose `inventory` and `context` match the screen.
+- [ ] Set the project filter to `payments-api`, reopen the report, export → the file
+      covers only that scope.
+
+### AI labelling
+
+- [ ] Without a key: the report says `AI analysis: not consulted`, there is no
+      "Model-generated findings" heading, and the notes state that paraphrase-level
+      problems were not checked.
+- [ ] With a key: the report gains a **Model-generated findings** section with a blue
+      banner, and deterministic findings remain in their own section.
+
+---
+
+# Verifying AI against a real model
+
+The test suite and the stub server prove the plumbing, not the model. Run this once with a
+real key before submitting:
+
+```bash
+export DEVMEMORY_LLM_API_KEY=sk-...
+export DEVMEMORY_LLM_MODEL=gpt-4o-mini
+# restart the API with that environment, import data/sample_memories.json
+python3 scripts/verify_ai_live.py
+```
+
+- [ ] It reports `10/10 checks passed` and exits `0`.
+- [ ] Step 4 prints findings that are *actually about the memories* — not generic
+      restatements. Judge this yourself: quality is not machine-checkable.
+- [ ] Step 6 confirms the injection memory was withheld.
+- [ ] Step 7 confirms the collection is unchanged.
+- [ ] Step 9 lists any rejected suggestions; none should reference real memories.
+
+If a check fails, that is a real finding about the AI path — report it rather than
+rerunning until it passes.
+
+---
+
 ## How to report a failure
 
 Please include:

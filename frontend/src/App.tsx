@@ -15,6 +15,7 @@ import { ImportPanel } from "./components/ImportPanel";
 import { MemoryDetail } from "./components/MemoryDetail";
 import { MemoryForm } from "./components/MemoryForm";
 import { MemoryList } from "./components/MemoryList";
+import { ReportPanel } from "./components/ReportPanel";
 import { RetrievalPanel } from "./components/RetrievalPanel";
 import { StatsBar } from "./components/StatsBar";
 import { StatusMessage } from "./components/StatusMessage";
@@ -40,6 +41,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
 
   const [showBenchmark, setShowBenchmark] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -262,7 +264,22 @@ export default function App() {
         >
           {showBenchmark ? "Hide benchmark" : "Benchmark"}
         </button>
+
+        <button
+          type="button"
+          className="button"
+          onClick={() => setShowReport((current) => !current)}
+        >
+          {showReport ? "Hide report" : "Inspector report"}
+        </button>
       </div>
+
+      {showReport && (
+        <ReportPanel
+          projectFilter={projectFilter}
+          onClose={() => setShowReport(false)}
+        />
+      )}
 
       {showBenchmark && (
         <BenchmarkPanel onClose={() => setShowBenchmark(false)} />

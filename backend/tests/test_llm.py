@@ -174,3 +174,104 @@ def test_configured_with_both_values(monkeypatch: pytest.MonkeyPatch) -> None:
     assert is_configured() is True
     # No reason to give when there is no problem.
     assert unavailable_reason() == ""
+
+# --- retries ----------------------------------------------------------------
+
+
+class _Flaky(BaseHTTPRequestHandler):
+    statuses: list[int] = [500, 200]
+    calls = 0
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        self.rfile.read(length)
+        _Flaky.calls += 1
+        status = _Flaky.statuses[min(_Flaky.calls - 1, len(_Flaky.statuses) - 1)]
+        if status == 200:
+            payload = json.dumps(
+                {"choices": [{"message": {"content": '{"findings": []}'}}]}
+            ).encode()
+        else:
+            payload = json.dumps({"error": {"message": "overloaded"}}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+def flaky_server(statuses: list[int]):
+    _Flaky.statuses = statuses
+    _Flaky.calls = 0
+    server = HTTPServer(("127.0.0.1", 0), _Flaky)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    )
+    thread.start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def test_a_transient_failure_is_retried() -> None:
+    """Observed in practice: providers return 503 while shedding load."""
+    server, base_url = flaky_server([503, 200])
+    try:
+        completion = LLMClient(
+            api_key="k", model="m", base_url=base_url, timeout=5.0,
+            retries=1, retry_backoff_seconds=0,
+        ).complete(messages())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert completion.text == '{"findings": []}'
+    assert _Flaky.calls == 2
+
+
+def test_retries_are_bounded() -> None:
+    server, base_url = flaky_server([500, 500, 500])
+    try:
+        with pytest.raises(LLMError, match="HTTP 500"):
+            LLMClient(
+                api_key="k", model="m", base_url=base_url, timeout=5.0,
+                retries=1, retry_backoff_seconds=0,
+            ).complete(messages())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # One attempt plus one retry, then it gives up.
+    assert _Flaky.calls == 2
+
+
+def test_a_client_error_is_not_retried() -> None:
+    """A 401 or 400 will fail the same way next time; retrying wastes time."""
+    server, base_url = flaky_server([401, 200])
+    try:
+        with pytest.raises(LLMError, match="HTTP 401"):
+            LLMClient(
+                api_key="k", model="m", base_url=base_url, timeout=5.0,
+                retries=3, retry_backoff_seconds=0,
+            ).complete(messages())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert _Flaky.calls == 1
+
+
+def test_no_retries_when_disabled() -> None:
+    server, base_url = flaky_server([503, 200])
+    try:
+        with pytest.raises(LLMError, match="HTTP 503"):
+            LLMClient(
+                api_key="k", model="m", base_url=base_url, timeout=5.0,
+                retries=0, retry_backoff_seconds=0,
+            ).complete(messages())
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert _Flaky.calls == 1

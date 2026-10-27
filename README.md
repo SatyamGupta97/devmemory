@@ -15,10 +15,11 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 8 complete: an optional language model looks for meaning-based problems rules
-cannot see. Every suggestion is re-validated against the memories that were actually
-sent, memory text is contained so it cannot instruct the model, and nothing a model says
-is ever applied. Without a key the deterministic checks remain the whole product. A deterministic health check inspects the
+Phase 9 complete: one consolidated report answers *what memories exist, what is wrong
+with them, whether retrieval finds the right ones, and what to do next* — with every
+number computed from stored data, every AI claim labelled as such, and the measurement
+context carried into the export. An optional language model adds meaning-based findings;
+without a key the deterministic checks remain the whole product. A deterministic health check inspects the
 collection for duplicates, contradictions, stale entries and weak metadata. A React UI
 covers the full memory lifecycle, the health check, and a retrieval playground.
 
@@ -58,7 +59,8 @@ devmemory/
     benchmark.json    version-controlled queries with expected memories
   scripts/
     smoke_api.py              end-to-end API checks
-    check_frontend_wiring.py     frontend <-> backend integration checks
+    check_frontend_wiring.py  frontend <-> backend integration checks
+    verify_ai_live.py         real-model verification (needs a key)
   docs/
     testing.md                   test guide and manual checklists
   pytest.ini
@@ -100,6 +102,9 @@ python3 scripts/smoke_api.py
 
 # frontend <-> backend wiring, with both running
 python3 scripts/check_frontend_wiring.py
+
+# real-model AI verification, with a key configured and the API running
+python3 scripts/verify_ai_live.py
 ```
 
 ## Run the app
@@ -189,6 +194,8 @@ CORS is not authentication: it constrains browsers, not other clients.
 | `POST` | `/api/benchmark/run` | Score a strategy against the benchmark |
 | `GET` | `/api/health/ai/status` | Whether AI analysis is configured |
 | `POST` | `/api/health/ai` | Ask a model for meaning-based findings |
+| `GET` | `/api/report` | Consolidated inspector report |
+| `GET` | `/api/report/export` | The same report as Markdown or JSON |
 
 `GET /api/memories` accepts `project` and `category` query filters. Unknown values
 return an empty list for `project`; an invalid `category` returns `422`.
@@ -715,10 +722,41 @@ export DEVMEMORY_LLM_MODEL=gpt-4o-mini
 | `DEVMEMORY_LLM_TIMEOUT` | `45` | Request timeout, seconds |
 | `DEVMEMORY_LLM_MAX_MEMORIES` | `60` | Memories per prompt; the cap is reported, never silently applied |
 | `DEVMEMORY_LLM_MAX_FINDINGS` | `20` | Findings accepted from one response |
+| `DEVMEMORY_LLM_RETRIES` | `2` | Retries on a transient 429/5xx before failing |
+| `DEVMEMORY_LLM_RETRY_BACKOFF` | `1.5` | Base delay between retries, seconds |
 
-**Not verified against a real model.** The HTTP path and validation are tested against a
-stub server speaking the same protocol, and the full endpoint was run against it, but no
-real provider was called from this environment.
+**Verified against a real model** — Google `gemini-3.5-flash` via its
+OpenAI-compatible endpoint, using the same client with no provider-specific code. On the
+sample dataset it returned four findings, all correct: the two duplicate pairs and the two
+value contradictions.
+
+| What was checked | Result |
+| ---------------- | ------ |
+| Findings labelled `source: model` | 4 of 4 |
+| Memory ids that do not exist | 0 |
+| Instruction-like memory withheld from the prompt | 1 of 1 |
+| Memories changed by the analysis | 0 (19 → 19) |
+| API key present in the response | no |
+
+An honest observation from that run: the model found 2 of the 3 contradictions the
+deterministic rules found, and missed the Celery→Dramatiq one — the case that needs
+reasoning about migration direction rather than recognising two values. Neither approach
+dominates, which is why the report keeps them in separate sections.
+
+To repeat it with your own provider:
+
+```bash
+export DEVMEMORY_LLM_API_KEY=sk-...
+export DEVMEMORY_LLM_MODEL=gpt-4o-mini
+# restart the API with that environment, import data/sample_memories.json, then:
+python3 scripts/verify_ai_live.py
+```
+
+That script checks output quality (every finding complete, labelled `source: model`, with
+quoted evidence and the model's own uncertainty) and the safety properties (the
+instruction-like memory withheld, no finding citing an unknown id, no memory changed, no
+key in the response). It exits non-zero if any check fails, so "verified" is a claim with
+evidence behind it rather than an impression.
 
 ### Deliberately not built
 
@@ -726,6 +764,63 @@ The phase brief also lists *"explain why a memory is relevant to a task"*. That 
 retrieval, not to a collection-wide inspection pass, so it was left out rather than bolted
 on. Retrieval explanations remain deterministic (term contributions), which is arguably
 better: a score you can recompute beats a paragraph you cannot.
+
+## Inspector report
+
+One document, composed from the other features rather than recomputing anything:
+
+```bash
+curl http://127.0.0.1:8000/api/report
+curl -OJ 'http://127.0.0.1:8000/api/report/export?format=markdown'
+```
+
+It contains: memory inventory by project/category/status, every deterministic finding
+(expandable to its evidence), an optional model-generated section, keyword-vs-semantic
+benchmark results, concrete retrieval failures, and prioritised next actions.
+
+### Three guarantees, each tested
+
+**1. It computes nothing of its own.** Inventory comes from the memories, findings from
+the health analyser, metrics from the benchmark. Tests assert the report's health section
+is identical to `GET /api/health` and its benchmark summary is identical to
+`POST /api/benchmark/run`, and that adding a memory changes the report. If the report
+ever starts hardcoding a demo number, those tests fail.
+
+**2. AI findings stay distinguishable.** The report has a separate `ai` section carrying
+`consulted`, the model name, the findings and the rejected suggestions. Every finding has
+`source: "model"` or `"rule"`, so a reader never has to guess which claims were computed
+and which were suggested. The Markdown export repeats this in prose.
+
+**3. Exports carry their measurement context.** A recall figure means nothing without
+knowing it came from ten queries, at `k=5`, over a provider that compares surface form.
+So the export opens with a *How this was measured* table:
+
+| Aspect | Example value |
+| ------ | ------------- |
+| Retrieval strategy | `keyword-bm25+semantic-embedding` |
+| Benchmark | v1 · 10 queries · k=5 |
+| Embedding provider | `local` / `hashed-ngrams-1024` (**surface form only**) |
+| Vectors | 19 indexed, 0 stale |
+| AI analysis | not consulted — no key configured |
+
+### Recommendations cite their evidence
+
+Every recommendation names the count that produced it — "Resolve 3 potential
+contradiction(s)", "Retrieval missed 2 expected memory/memories" — and links the finding
+ids behind it. A suggestion without a number is an opinion, and this tool does not offer
+opinions.
+
+Ordering is by priority, with untrusted content and contradictions first: those are the
+two ways an agent's memory actively misleads it, rather than merely being untidy.
+
+### What it deliberately does not do
+
+- **No composite score.** A single "memory quality: 62/100" would be invented precision
+  over incommensurable things. The report shows the components and their limits instead.
+- **No netting of the trade-off.** If semantic recall is higher and precision lower, both
+  are shown and the recommendation says to compare before switching.
+- **No silence about limitations.** The report ends with what the rules cannot see, and
+  states that a clean result is not proof of quality.
 
 ## UI architecture notes
 

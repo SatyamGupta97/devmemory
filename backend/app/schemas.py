@@ -438,3 +438,89 @@ class AiStatus(BaseModel):
     provider: str
     model: str
     reason: str | None = None
+
+
+# --- consolidated report ----------------------------------------------------
+
+
+class InventoryBreakdown(BaseModel):
+    """Counts derived from the stored memories, never from the report code."""
+
+    total: int
+    by_project: dict[str, int]
+    by_category: dict[str, int]
+    by_status: dict[str, int]
+    with_confidence: int
+    without_confidence: int
+
+
+class ReportRecommendation(BaseModel):
+    """A next action, with the numbers that justify it."""
+
+    priority: str
+    title: str
+    rationale: str
+    related: list[str] = Field(default_factory=list)
+
+
+class MissedExample(BaseModel):
+    """A query where retrieval failed to surface an expected memory."""
+
+    query_id: str
+    query: str
+    missed: list[str]
+    expected_count: int
+
+
+class ReportBenchmark(BaseModel):
+    keyword: BenchmarkReport
+    semantic: BenchmarkReport | None = None
+    missed_examples: list[MissedExample] = Field(default_factory=list)
+
+
+class AiSection(BaseModel):
+    """Whether a model was consulted, and what it said.
+
+    Kept separate from the deterministic findings on purpose: a reader must be
+    able to tell which claims were computed and which were suggested.
+    """
+
+    consulted: bool
+    model: str | None = None
+    reason: str | None = None
+    findings: list[AiFinding] = Field(default_factory=list)
+    rejected: list[str] = Field(default_factory=list)
+
+
+class ReportContext(BaseModel):
+    """What was actually measured, so a reader can judge the numbers.
+
+    Without this a report is unfalsifiable: scores from a ten-query benchmark
+    over a surface-similarity provider mean something very different from scores
+    over real embeddings.
+    """
+
+    retrieval_strategy: str
+    benchmark_version: int
+    benchmark_query_count: int
+    benchmark_k: int
+    embedding_provider: str
+    embedding_model: str
+    embedding_captures_meaning: bool
+    embeddings_indexed: int
+    embeddings_stale: int
+    ai_consulted: bool
+    ai_model: str | None = None
+    ai_unavailable_reason: str | None = None
+
+
+class InspectorReport(BaseModel):
+    generated_at: datetime
+    scope_project: str | None
+    inventory: InventoryBreakdown
+    health: HealthReport
+    ai: AiSection
+    retrieval: ReportBenchmark
+    recommendations: list[ReportRecommendation]
+    context: ReportContext
+    notes: list[str]

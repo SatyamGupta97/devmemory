@@ -925,3 +925,88 @@ button:focus-visible {
 .ai-rejected ul {
   color: var(--danger);
 }
+
+/* --- inspector report ---------------------------------------------------- */
+
+.report {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 16px;
+}
+
+.report-actions a {
+  text-decoration: none;
+}
+
+.report-context {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: #fafafc;
+}
+
+.report-context dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.report-context dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.report-context dd {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+}
+
+.context-warning {
+  color: #8a5300;
+  font-weight: 600;
+}
+
+@media (max-width: 620px) {
+  .report-context dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 700px) {
+  .report-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.recommendations {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recommendation {
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+}

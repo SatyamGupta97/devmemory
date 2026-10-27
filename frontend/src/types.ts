@@ -253,3 +253,65 @@ export interface AiStatus {
   model: string;
   reason: string | null;
 }
+
+/** Consolidated inspector report types. */
+
+export interface InventoryBreakdown {
+  total: number;
+  by_project: Record<string, number>;
+  by_category: Record<string, number>;
+  by_status: Record<string, number>;
+  with_confidence: number;
+  without_confidence: number;
+}
+
+export interface ReportRecommendation {
+  priority: "high" | "medium" | "low" | string;
+  title: string;
+  rationale: string;
+  related: string[];
+}
+
+export interface MissedExample {
+  query_id: string;
+  query: string;
+  missed: string[];
+  expected_count: number;
+}
+
+export interface ReportContext {
+  retrieval_strategy: string;
+  benchmark_version: number;
+  benchmark_query_count: number;
+  benchmark_k: number;
+  embedding_provider: string;
+  embedding_model: string;
+  embedding_captures_meaning: boolean;
+  embeddings_indexed: number;
+  embeddings_stale: number;
+  ai_consulted: boolean;
+  ai_model: string | null;
+  ai_unavailable_reason: string | null;
+}
+
+export interface InspectorReport {
+  generated_at: string;
+  scope_project: string | null;
+  inventory: InventoryBreakdown;
+  health: HealthReport;
+  ai: {
+    consulted: boolean;
+    model: string | null;
+    reason: string | null;
+    findings: AiFinding[];
+    rejected: string[];
+  };
+  retrieval: {
+    keyword: BenchmarkReport;
+    semantic: BenchmarkReport | null;
+    missed_examples: MissedExample[];
+  };
+  recommendations: ReportRecommendation[];
+  context: ReportContext;
+  notes: string[];
+}

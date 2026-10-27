@@ -13,11 +13,25 @@ responses.
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-from app.config import llm_api_key, llm_base_url, llm_model, llm_provider_name, llm_timeout_seconds
+from app.config import (
+    llm_api_key,
+    llm_base_url,
+    llm_model,
+    llm_provider_name,
+    llm_retries,
+    llm_retry_backoff_seconds,
+    llm_timeout_seconds,
+)
+
+#: Statuses worth another attempt. 429 is rate limiting, 5xx is the provider
+#: having a bad moment. Retrying a 400 or 401 would just waste time: the request
+#: itself is wrong.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 class LLMError(RuntimeError):
@@ -26,6 +40,14 @@ class LLMError(RuntimeError):
 
 class LLMNotConfigured(LLMError):
     """No key or model is configured, so AI analysis cannot run."""
+
+
+class _RetryableError(Exception):
+    """Internal: a failure worth trying again. Never escapes this module."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
 
 
 @dataclass(frozen=True)
@@ -53,13 +75,34 @@ class LLMClient:
         model: str,
         base_url: str,
         timeout: float = 45.0,
+        retries: int = 1,
+        retry_backoff_seconds: float = 1.5,
     ) -> None:
         self._api_key = api_key
         self.model = model
         self._base_url = base_url
         self._timeout = timeout
+        self._retries = max(0, retries)
+        self._retry_backoff = retry_backoff_seconds
 
     def complete(self, messages: list[ChatMessage]) -> ChatCompletion:
+        """Call the provider, retrying a transient failure a bounded number of times.
+
+        Observed in practice: providers return 503 while shedding load. Failing
+        the whole analysis on one such response loses a working feature for a
+        temporary reason, so a small number of retries is worth the delay.
+        """
+        attempt = 0
+        while True:
+            try:
+                return self._complete_once(messages)
+            except _RetryableError as error:
+                attempt += 1
+                if attempt > self._retries:
+                    raise LLMError(error.message) from error
+                time.sleep(self._retry_backoff * attempt)
+
+    def _complete_once(self, messages: list[ChatMessage]) -> ChatCompletion:
         payload = json.dumps(
             {
                 "model": self.model,
@@ -89,10 +132,13 @@ class LLMClient:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
                 body = json.loads(response.read())
         except urllib.error.HTTPError as error:
-            raise LLMError(
+            message = (
                 f"The model provider returned HTTP {error.code}."
                 + self._safe_reason(error)
-            ) from error
+            )
+            if error.code in RETRYABLE_STATUS:
+                raise _RetryableError(message) from error
+            raise LLMError(message) from error
         except urllib.error.URLError as error:
             raise LLMError(f"Could not reach the model provider: {error.reason}") from error
         except TimeoutError as error:
@@ -172,4 +218,6 @@ def get_client() -> LLMClient:
         model=llm_model(),
         base_url=llm_base_url(),
         timeout=llm_timeout_seconds(),
+        retries=llm_retries(),
+        retry_backoff_seconds=llm_retry_backoff_seconds(),
     )

@@ -242,3 +242,17 @@ def llm_max_memories() -> int:
 def llm_max_findings() -> int:
     """Upper bound on findings accepted from one model response."""
     return _int_env("DEVMEMORY_LLM_MAX_FINDINGS", 20)
+
+
+def llm_retries() -> int:
+    """How many times to retry a transient provider failure (429/5xx).
+
+    Two retries rather than one: free-tier and shared endpoints shed load with
+    503s often enough that a single retry was still failing in practice.
+    """
+    return _int_env("DEVMEMORY_LLM_RETRIES", 2)
+
+
+def llm_retry_backoff_seconds() -> float:
+    """Base delay between retries; multiplied by the attempt number."""
+    return _float_env("DEVMEMORY_LLM_RETRY_BACKOFF", 1.5)
