@@ -5,6 +5,8 @@
  */
 
 import type {
+  BenchmarkDefinition,
+  BenchmarkReport,
   EmbeddingStatus,
   HealthReport,
   IndexResult,
@@ -167,6 +169,20 @@ export async function retrieveMemories(input: {
   strategy?: RetrievalStrategy;
 }): Promise<RetrievalResult> {
   return request<RetrievalResult>("/api/retrieve", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getBenchmark(): Promise<BenchmarkDefinition> {
+  return request<BenchmarkDefinition>("/api/benchmark");
+}
+
+export async function runBenchmark(input: {
+  strategy: RetrievalStrategy;
+  k?: number;
+}): Promise<BenchmarkReport> {
+  return request<BenchmarkReport>("/api/benchmark/run", {
     method: "POST",
     body: JSON.stringify(input),
   });

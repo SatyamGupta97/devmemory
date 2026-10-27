@@ -195,3 +195,17 @@ def contains_instruction_like_text(text: str) -> bool:
     """
     lowered = text.lower()
     return any(re.search(pattern, lowered) for pattern in INJECTION_PATTERNS)
+
+
+def content_key(text: str) -> str:
+    """A stable fingerprint of a memory's text.
+
+    Used to reference memories across processes and re-imports. Database ids are
+    assigned at import time and change every time, so a benchmark or a stored
+    vector keyed on them would silently start referring to something else. This
+    key is derived from the normalised content, so the same statement always has
+    the same key.
+    """
+    import hashlib
+
+    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()

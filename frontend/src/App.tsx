@@ -9,6 +9,7 @@ import {
   listMemories,
   updateMemory,
 } from "./api/client";
+import { BenchmarkPanel } from "./components/BenchmarkPanel";
 import { HealthPanel } from "./components/HealthPanel";
 import { ImportPanel } from "./components/ImportPanel";
 import { MemoryDetail } from "./components/MemoryDetail";
@@ -38,6 +39,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("browse");
   const [busy, setBusy] = useState(false);
 
+  const [showBenchmark, setShowBenchmark] = useState(false);
   const [healthReport, setHealthReport] = useState<HealthReport | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -252,7 +254,19 @@ export default function App() {
         >
           {healthLoading ? "Checking…" : "Run health check"}
         </button>
+
+        <button
+          type="button"
+          className="button"
+          onClick={() => setShowBenchmark((current) => !current)}
+        >
+          {showBenchmark ? "Hide benchmark" : "Benchmark"}
+        </button>
       </div>
+
+      {showBenchmark && (
+        <BenchmarkPanel onClose={() => setShowBenchmark(false)} />
+      )}
 
       {healthError && (
         <StatusMessage tone="error" onDismiss={() => setHealthError(null)}>

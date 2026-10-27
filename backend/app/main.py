@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import embeddings, health, memories, retrieval
+from app.api import benchmark, embeddings, health, memories, retrieval
 from app.config import get_cors_origins
 from app.db import init_db
 
@@ -43,6 +43,7 @@ app.include_router(memories.router)
 app.include_router(health.router)
 app.include_router(retrieval.router)
 app.include_router(embeddings.router)
+app.include_router(benchmark.router)
 
 # A browser enforces same-origin policy: a page served from localhost:5173 may
 # not read a response from localhost:8000 unless the *server* says so. This

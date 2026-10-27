@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "description": "Retrieval benchmark for the sample dataset. Every expectation names a memory by its exact content, not by a database id: ids are assigned at import time and change on every re-import, so a benchmark keyed on them would silently start testing nothing. The evaluator derives a stable content key on both sides and reports any expectation it cannot resolve.",
+  "default_k": 5,
+  "queries": [
+    {
+      "id": "q01-postgres-direct",
+      "kind": "direct",
+      "project": "payments-api",
+      "query": "Which database does the user service use for persistence?",
+      "expected": [
+        {
+          "content": "The user service uses PostgreSQL 15 for persistence.",
+          "why": "The current decision, stated with the words used in the query."
+        },
+        {
+          "content": "The user service uses MySQL for persistence.",
+          "why": "The outdated decision. Still relevant: a retriever that only surfaces one of two conflicting memories hides the conflict."
+        }
+      ]
+    },
+    {
+      "id": "q02-caching-paraphrase",
+      "kind": "paraphrase",
+      "project": "payments-api",
+      "query": "Add caching to the user service.",
+      "expected": [
+        {
+          "content": "We disabled Redis caching for user records because stale cache entries caused wrong account balances.",
+          "why": "Directly about caching user records; the reason the last attempt was reverted."
+        },
+        {
+          "content": "We removed the in-memory account snapshot because balances could go stale after writes.",
+          "why": "The same lesson learned a second way, phrased without the word 'caching'. A keyword retriever misses this."
+        }
+      ]
+    },
+    {
+      "id": "q03-cache-morphology",
+      "kind": "morphology",
+      "project": "payments-api",
+      "query": "cache invalidation guidance",
+      "expected": [
+        {
+          "content": "We disabled Redis caching for user records because stale cache entries caused wrong account balances.",
+          "why": "Answers the question using 'caching' and 'cache'."
+        },
+        {
+          "content": "Redis caching was disabled for user records after stale cache entries produced incorrect account balances.",
+          "why": "The same decision recorded twice; either wording satisfies the query."
+        }
+      ]
+    },
+    {
+      "id": "q04-stale-balances",
+      "kind": "historical_failure",
+      "project": "payments-api",
+      "query": "Why did account balances go wrong after writes?",
+      "expected": [
+        {
+          "content": "We removed the in-memory account snapshot because balances could go stale after writes.",
+          "why": "Names the cause directly."
+        },
+        {
+          "content": "We disabled Redis caching for user records because stale cache entries caused wrong account balances.",
+          "why": "The related earlier incident; same failure mode, different layer."
+        }
+      ]
+    },
+    {
+      "id": "q05-duplicate-events",
+      "kind": "paraphrase",
+      "project": "payments-api",
+      "query": "How do we handle duplicate refund events delivered twice by the payment provider?",
+      "expected": [
+        {
+          "content": "Stripe webhook handlers must be idempotent because Stripe retries deliveries.",
+          "why": "This is the answer, and it shares no content word with the query. Keyword retrieval scores it zero."
+        }
+      ]
+    },
+    {
+      "id": "q06-analytics-queue",
+      "kind": "contradiction",
+      "project": "analytics",
+      "query": "Which background job queue do we use?",
+      "expected": [
+        {
+          "content": "We migrated from Celery to Dramatiq for background jobs in 2025.",
+          "why": "The current answer."
+        },
+        {
+          "content": "Background jobs are queued through Celery with Redis as the broker.",
+          "why": "The superseded answer. Returning it is correct: the conflict is the useful signal."
+        }
+      ]
+    },
+    {
+      "id": "q07-python-runtime",
+      "kind": "contradiction",
+      "project": "analytics",
+      "query": "What Python runtime do the backend services use?",
+      "expected": [
+        {
+          "content": "Python 3.8 is the runtime for all backend services.",
+          "why": "The outdated constraint."
+        },
+        {
+          "content": "Python 3.11 is the runtime for all backend services.",
+          "why": "The current decision."
+        }
+      ]
+    },
+    {
+      "id": "q08-project-boundary",
+      "kind": "project_boundary",
+      "project": "analytics",
+      "query": "PostgreSQL cluster",
+      "expected": [
+        {
+          "content": "The reporting service runs on the same PostgreSQL cluster as the user service.",
+          "why": "The only PostgreSQL memory in this namespace. Matching the payments-api memories here would be a namespace leak."
+        }
+      ]
+    },
+    {
+      "id": "q09-card-data",
+      "kind": "direct",
+      "project": "payments-api",
+      "query": "Is it safe to log payment card data?",
+      "expected": [
+        {
+          "content": "Never log full card numbers or CVV values; use the last four digits only.",
+          "why": "The governing constraint."
+        }
+      ]
+    },
+    {
+      "id": "q10-unrelated",
+      "kind": "irrelevant",
+      "project": "payments-api",
+      "query": "How do we roll out a Kubernetes helm chart to the cluster?",
+      "expected": [],
+      "why": "Nothing in this collection covers deployment tooling. A retriever that returns something here is inventing relevance."
+    }
+  ]
+}

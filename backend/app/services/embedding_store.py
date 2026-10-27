@@ -10,12 +10,11 @@ justify.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
 
-from app.services.text import normalize_text
+from app.services.text import content_key
 
 
 def content_hash(content: str) -> str:
@@ -24,7 +23,7 @@ def content_hash(content: str) -> str:
     Normalised first, so a change that only affects punctuation or casing — which
     cannot change an embedding meaningfully — does not trigger re-indexing.
     """
-    return hashlib.sha256(normalize_text(content).encode("utf-8")).hexdigest()
+    return content_key(content)
 
 
 @dataclass(frozen=True)

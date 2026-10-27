@@ -297,3 +297,83 @@ class EmbeddingStatus(BaseModel):
     total_memories: int
     indexed_memories: int
     stale_memories: int
+
+
+# --- benchmark --------------------------------------------------------------
+
+
+class BenchmarkExpectation(BaseModel):
+    """One memory that should be retrieved for a query."""
+
+    content: str
+    why: str | None = None
+
+
+class BenchmarkQueryDefinition(BaseModel):
+    id: str
+    kind: str
+    project: str | None = None
+    query: str
+    expected: list[BenchmarkExpectation]
+    why: str | None = None
+    k: int | None = Field(default=None, ge=1, le=50)
+
+
+class BenchmarkDefinition(BaseModel):
+    version: int
+    description: str
+    default_k: int
+    queries: list[BenchmarkQueryDefinition]
+
+
+class BenchmarkCaseResult(BaseModel):
+    """The outcome of one query under one strategy."""
+
+    query_id: str
+    kind: str
+    project: str | None
+    query: str
+    k: int
+    valid: bool
+    expected_count: int
+    returned_count: int
+    relevant_retrieved: list[str]
+    missed: list[str]
+    irrelevant_retrieved: list[str]
+    unresolved_expectations: list[str]
+    precision_at_k: float
+    recall_at_k: float | None
+    reciprocal_rank: float | None
+    first_relevant_rank: int | None
+
+
+class BenchmarkSummary(BaseModel):
+    strategy: str
+    k: int
+    query_count: int
+    valid_queries: int
+    invalid_queries: int
+    mean_precision_at_k: float
+    mean_recall_at_k: float | None
+    mrr: float | None
+    total_missed: int
+    total_irrelevant_retrieved: int
+    unresolved_expectations: int
+
+
+class BenchmarkRunRequest(BaseModel):
+    strategy: RetrievalStrategy = RetrievalStrategy.KEYWORD
+    k: int | None = Field(default=None, ge=1, le=50)
+    project: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Restrict the candidate pool. Query namespaces come from the file.",
+    )
+
+
+class BenchmarkReport(BaseModel):
+    generated_at: datetime
+    strategy: str
+    summary: BenchmarkSummary
+    cases: list[BenchmarkCaseResult]
+    notes: list[str]

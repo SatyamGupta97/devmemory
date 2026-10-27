@@ -149,3 +149,68 @@ export interface IndexResult {
   failed: number;
   errors: string[];
 }
+
+/** Benchmark types. */
+
+export interface BenchmarkExpectation {
+  content: string;
+  why: string | null;
+}
+
+export interface BenchmarkQueryDefinition {
+  id: string;
+  kind: string;
+  project: string | null;
+  query: string;
+  expected: BenchmarkExpectation[];
+  why: string | null;
+  k: number | null;
+}
+
+export interface BenchmarkDefinition {
+  version: number;
+  description: string;
+  default_k: number;
+  queries: BenchmarkQueryDefinition[];
+}
+
+export interface BenchmarkCaseResult {
+  query_id: string;
+  kind: string;
+  project: string | null;
+  query: string;
+  k: number;
+  valid: boolean;
+  expected_count: number;
+  returned_count: number;
+  relevant_retrieved: string[];
+  missed: string[];
+  irrelevant_retrieved: string[];
+  unresolved_expectations: string[];
+  precision_at_k: number;
+  recall_at_k: number | null;
+  reciprocal_rank: number | null;
+  first_relevant_rank: number | null;
+}
+
+export interface BenchmarkSummary {
+  strategy: string;
+  k: number;
+  query_count: number;
+  valid_queries: number;
+  invalid_queries: number;
+  mean_precision_at_k: number;
+  mean_recall_at_k: number | null;
+  mrr: number | null;
+  total_missed: number;
+  total_irrelevant_retrieved: number;
+  unresolved_expectations: number;
+}
+
+export interface BenchmarkReport {
+  generated_at: string;
+  strategy: string;
+  summary: BenchmarkSummary;
+  cases: BenchmarkCaseResult[];
+  notes: string[];
+}

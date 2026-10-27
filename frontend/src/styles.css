@@ -764,3 +764,112 @@ button:focus-visible {
   border-radius: 6px;
   padding: 8px 10px;
 }
+
+/* --- benchmark ----------------------------------------------------------- */
+
+.benchmark {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.benchmark-compare {
+  margin: 16px 0;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.compare-column {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.compare-column h4 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+}
+
+.compare-column dl,
+.benchmark-single dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+
+.compare-column dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.compare-column dd {
+  margin: 0 0 4px;
+  font-weight: 650;
+  font-size: 1rem;
+}
+
+.benchmark-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 12px;
+}
+
+.benchmark-table caption {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-bottom: 6px;
+}
+
+.benchmark-table th,
+.benchmark-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.benchmark-table thead th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+}
+
+.benchmark-query-text {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.missed-list {
+  margin: 0;
+  padding-left: 14px;
+  color: var(--danger);
+  font-size: 0.72rem;
+}
+
+.row-invalid {
+  background: var(--danger-soft);
+}

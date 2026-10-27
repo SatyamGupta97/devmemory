@@ -326,6 +326,61 @@ measure it rather than hide it.
 
 ---
 
+# Manual checklist — Retrieval Benchmark (Phase 7)
+
+The point of this phase is that numbers must be *earned*. These steps check that the UI
+shows where each number came from and admits what it cannot prove.
+
+Backend and frontend running, `data/sample_memories.json` imported, vectors indexed.
+
+### Run it
+
+- [ ] Click **Benchmark** in the toolbar → the panel opens.
+- [ ] It states `10 version-controlled queries, cut-off k=5` and mentions that ground
+      truth is content-matched so it survives re-importing.
+- [ ] Before running, it says a ranking can "only be admired, not evaluated".
+
+### One strategy
+
+- [ ] Click **Run keyword** → metrics appear: precision@5 `0.727`, recall@5 `0.833`,
+      MRR `0.806`, 2 memories missed, 7 irrelevant returned.
+- [ ] The table lists all ten queries, each with its own P@k, R@k and RR.
+- [ ] Rows with a miss name the missed memory, not just a count.
+
+### Both strategies
+
+- [ ] Click **Compare keyword vs semantic** → two columns appear side by side.
+- [ ] Semantic shows precision `0.660`, recall `0.944`, MRR `0.917`.
+- [ ] The table gains a `P@k (sem)` and `R@k (sem)` column.
+- [ ] **Notice the direction of the trade:** recall and MRR improve, precision and
+      irrelevant-results get worse. If a demo claims semantic is simply better, it is
+      misreading this table.
+
+### Honesty checks
+
+- [ ] Open **What these numbers do and do not prove** → the ten-query limitation is
+      stated.
+- [ ] The `q10-unrelated` row shows recall `—` rather than `0.00`, because there was
+      nothing to recall.
+- [ ] Run the benchmark twice → identical numbers. Results are reproducible.
+
+### Failure paths
+
+- [ ] Delete `backend/devmemory.db`, restart the backend, then run the benchmark with no
+      memories imported → the report says no query could be scored and names
+      `data/sample_memories.json`.
+- [ ] Run **Run semantic** without indexing → a red message names
+      `POST /api/embeddings/index`; the keyword numbers, if already run, stay on screen.
+
+### The claim worth testing yourself
+
+- [ ] Open `data/benchmark.json` and reword one expected memory's `content` by a word.
+- [ ] Run `pytest tests/test_benchmark.py -k resolves` → it fails, telling you the
+      benchmark no longer matches the sample data. Silent loss of ground truth is the
+      failure mode this test exists to prevent.
+
+---
+
 ## How to report a failure
 
 Please include:

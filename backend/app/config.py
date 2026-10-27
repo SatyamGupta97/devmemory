@@ -16,6 +16,8 @@ DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 # backend/app/config.py -> backend/
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+# backend/ -> repository root, where the version-controlled data files live.
+REPO_ROOT = BACKEND_DIR.parent
 
 
 def get_db_path() -> Path:
@@ -184,3 +186,16 @@ def semantic_min_similarity() -> float:
     the right direction for a tool whose findings must be trustworthy.
     """
     return _float_env("DEVMEMORY_SEMANTIC_MIN_SIMILARITY", 0.10)
+
+
+def benchmark_path() -> Path:
+    """Location of the version-controlled benchmark dataset."""
+    configured = os.environ.get("DEVMEMORY_BENCHMARK_PATH")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return REPO_ROOT / "data" / "benchmark.json"
+
+
+def benchmark_default_k() -> int:
+    """Fallback cut-off when a benchmark query does not specify one."""
+    return _int_env("DEVMEMORY_BENCHMARK_K", 5)

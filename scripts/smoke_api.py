@@ -366,6 +366,31 @@ def main() -> int:
                       "strategy": "semantic"})
     results.check("unindexed scope -> 409 with advice", 409, status, status == 409)
 
+    print("\n24. Retrieval benchmark")
+    status, definition = call(base, "GET", "/api/benchmark")
+    results.check("GET /api/benchmark", 200, status, status == 200)
+    results.check("has queries", True,
+                  len(definition.get("queries", [])) if isinstance(definition, dict) else 0,
+                  isinstance(definition, dict) and len(definition.get("queries", [])) >= 8)
+
+    status, report = call(base, "POST", "/api/benchmark/run", {"strategy": "keyword"})
+    results.check("POST /api/benchmark/run", 200, status, status == 200)
+    summary = report.get("summary", {}) if isinstance(report, dict) else {}
+    results.check("reports a strategy", "keyword-bm25", summary.get("strategy"),
+                  summary.get("strategy") == "keyword-bm25")
+    results.check("every query was scored", True,
+                  f"{summary.get('valid_queries')}/{summary.get('query_count')}",
+                  summary.get("valid_queries") == summary.get("query_count"))
+    for metric in ("mean_precision_at_k", "mean_recall_at_k", "mrr"):
+        value = summary.get(metric)
+        results.check(f"{metric} is a ratio", True, value,
+                      isinstance(value, (int, float)) and 0.0 <= value <= 1.0)
+
+    status, again = call(base, "POST", "/api/benchmark/run", {"strategy": "keyword"})
+    results.check("results are reproducible", True,
+                  again.get("summary") == summary if isinstance(again, dict) else False,
+                  isinstance(again, dict) and again.get("summary") == summary)
+
     return results.summary()
 
 

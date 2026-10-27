@@ -15,10 +15,10 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 6 complete: retrieval can run on keyword (BM25) or on memory vectors, behind a
-provider abstraction that works with no model access and upgrades to a hosted embedding
-model with two environment variables. Phase 5's keyword baseline remains, and every
-result states which strategy produced it. A deterministic health check inspects the
+Phase 7 complete: a version-controlled benchmark measures retrieval quality with
+precision@k, recall@k and MRR, and runs the same queries through both strategies so a
+comparison is like-for-like. Retrieval itself runs on keyword (BM25) or on memory
+vectors, behind a provider abstraction that works with no model access. A deterministic health check inspects the
 collection for duplicates, contradictions, stale entries and weak metadata. A React UI
 covers the full memory lifecycle, the health check, and a retrieval playground.
 
@@ -39,6 +39,7 @@ devmemory/
         embeddings.py   provider abstraction, cosine similarity
         embedding_store.py  vector persistence
         indexing.py     incremental index building
+        benchmark.py    metrics and evaluation
         text.py         normalisation and similarity
     tests/            pytest suite
     requirements.txt
@@ -52,6 +53,7 @@ devmemory/
     .env.example
   data/
     sample_memories.json
+    benchmark.json    version-controlled queries with expected memories
   scripts/
     smoke_api.py              end-to-end API checks
     check_frontend_wiring.py     frontend <-> backend integration checks
@@ -181,6 +183,8 @@ CORS is not authentication: it constrains browsers, not other clients.
 | `POST` | `/api/retrieve` | Rank memories for a coding task, with reasons |
 | `GET` | `/api/embeddings/status` | Active embedding provider and index coverage |
 | `POST` | `/api/embeddings/index` | Build or refresh memory vectors |
+| `GET` | `/api/benchmark` | The version-controlled benchmark dataset |
+| `POST` | `/api/benchmark/run` | Score a strategy against the benchmark |
 
 `GET /api/memories` accepts `project` and `category` query filters. Unknown values
 return an empty list for `project`; an invalid `category` returns `422`.
@@ -258,8 +262,11 @@ instruction-like text.
 
 It also holds one memory that is semantically relevant to caching but shares no word with
 the usual caching query — so the keyword baseline's blind spot is demonstrable rather than
-theoretical, and Phase 6 has something to beat. A test asserts the file always validates
-against the API schema.
+theoretical. A test asserts the file always validates against the API schema.
+
+`data/benchmark.json` holds the ten evaluation queries with their expected memories. It is
+version-controlled alongside the data it refers to, and a test asserts every expectation
+still resolves.
 
 ## Memory health check
 
@@ -333,6 +340,9 @@ Retrieval:
 | `DEVMEMORY_RETRIEVAL_K1` | `1.2` | BM25 term-saturation parameter |
 | `DEVMEMORY_RETRIEVAL_B` | `0.75` | BM25 length-normalisation parameter |
 | `DEVMEMORY_RETRIEVAL_LIMIT` | `10` | Default number of results |
+| `DEVMEMORY_SEMANTIC_MIN_SIMILARITY` | `0.10` | Below this cosine similarity, no match |
+| `DEVMEMORY_BENCHMARK_PATH` | `data/benchmark.json` | Benchmark dataset location |
+| `DEVMEMORY_BENCHMARK_K` | `5` | Fallback cut-off when a query omits one |
 
 Embedding variables are documented under
 [Embeddings and semantic retrieval](#embeddings-and-semantic-retrieval).
@@ -490,16 +500,17 @@ Running both strategies over the sample dataset for `"Add caching to the user se
 | 5 | Redis caching was disabled for user records… | 1.880 | 0.329 |
 | 6 | Use structured logging with request IDs… | 1.133 | 0.268 |
 
-**Identical set, identical order.** On this dataset the local provider buys nothing over
-BM25, because it is essentially lexical matching with a little morphology tolerance. The
-ranking failure from Phase 5 is untouched: the genuinely relevant memory still sits at
-#4, behind two database decisions.
+**Identical set, identical order for this one query.** Read alone, that looks like the
+local provider buys nothing.
 
-That is the honest result, and it is left in the README rather than tuned away. It also
-sets up the benchmark: the claim "semantic search improves retrieval" is currently
-**unproven**, and Phase 7 exists to test it — first with the local provider (where we
-expect no gain), then again after a hosted key is configured (where we expect the memory
-to climb).
+The benchmark (below) shows that conclusion was wrong, and it is worth noticing *why* it
+was wrong: I generalised from a single example. Across ten queries the local provider
+does better on recall and worse on precision. One query was not enough evidence to make a
+claim about a retrieval strategy, which is exactly the argument for building a benchmark
+instead of eyeballing a demo.
+
+What is still true: the paraphrase failure is untouched — the snapshot memory ranks 4th
+or worse either way — and **only a hosted model can fix that.**
 
 ### Two implementation details worth knowing
 
@@ -546,6 +557,78 @@ Vectors from different providers coexist, so the benchmark can compare them on t
 memories without re-indexing between runs. **The hosted path has been verified against a
 stub server that speaks the same protocol — it has not been run against a real model in
 this environment.**
+
+## Retrieval benchmark
+
+Ten queries, a mix of direct matches, paraphrases, contradictions, a namespace-boundary
+test, a morphology case and one query that should match nothing. Run it against either
+strategy, or both:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/benchmark/run \
+  -H 'Content-Type: application/json' -d '{"strategy": "keyword"}'
+```
+
+### Ground truth is content, not ids
+
+`data/benchmark.json` names each expected memory by its exact content. Database ids are
+assigned at import time and change on every re-import, so a benchmark keyed on them would
+silently start testing nothing. The evaluator derives a stable content key on both sides.
+
+A test asserts that **every shipped expectation resolves against the sample dataset**, so
+if a memory is reworded the benchmark file fails loudly instead of quietly losing ground
+truth.
+
+### Metric definitions
+
+| Metric | Definition used here |
+| ------ | -------------------- |
+| precision@k | relevant returned ÷ **returned** in the top k (not ÷ k, so returning nothing is not rewarded) |
+| recall@k | relevant returned ÷ expected |
+| RR | 1 ÷ rank of the first expected memory, `0.0` if none found |
+| MRR | mean of RR across queries |
+
+Two cases are defined explicitly rather than left to divide by zero:
+
+- **No expected memories** (a query that should match nothing): precision is `1.0` when
+  nothing was returned, `0.0` otherwise; recall is `null` and excluded from the mean,
+  because there was nothing to recall.
+- **An expectation that resolves to no stored memory**: the query is marked invalid and
+  excluded from the aggregate. Scoring it anyway would report a misleadingly high recall
+  for a benchmark entry that is simply broken.
+
+If the collection is empty, nothing is scored — "returned nothing" is vacuous when there
+was nothing to rank.
+
+### Measured results (local provider)
+
+| Metric | Keyword (BM25) | Semantic (local) | Change |
+| ------ | -------------- | ---------------- | ------ |
+| precision@5 | 0.727 | 0.660 | −0.067 |
+| recall@5 | 0.833 | 0.944 | **+0.111** |
+| MRR | 0.806 | 0.917 | **+0.111** |
+| memories missed | 2 | 1 | −1 |
+| irrelevant returned | 7 | 12 | +5 |
+
+**This is a trade-off, not a win.** The local provider finds one more expected memory
+(it matches `delivered` to `deliveries`, which keyword cannot) but returns five more
+irrelevant ones, because n-gram similarity admits weak matches.
+
+Two conclusions worth separating:
+
+- **Semantic retrieval is not simply better.** It trades precision for recall here. Which
+  matters more depends on the use case: a memory injector for an agent probably prefers
+  recall, a debugging tool probably prefers precision.
+- **The paraphrase gap is still open.** The snapshot memory is missed by both, because no
+  amount of surface comparison can connect "caching" to "snapshot". A hosted model is the
+  only thing that changes that, and the benchmark is how you would prove it did.
+
+### What the benchmark cannot tell you
+
+Ten queries measure this collection and these queries. They do not prove general
+retrieval quality, and the report says so in its `notes`. An earlier version of this
+README claimed the local provider "buys nothing" based on a single query — the benchmark
+disproved that, which is the argument for having one.
 
 ## UI architecture notes
 
