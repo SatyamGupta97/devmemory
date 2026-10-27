@@ -107,6 +107,7 @@ async function openHealth() {
   render(<App />);
   await screen.findByText(/disabled Redis caching/);
   const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "Health" }));
   await user.click(screen.getByRole("button", { name: "Run health check" }));
   return {
     user,
@@ -251,6 +252,7 @@ describe("AI-assisted analysis", () => {
       screen.getByRole("combobox", { name: "Filter by project" }),
       "payments-api",
     );
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });

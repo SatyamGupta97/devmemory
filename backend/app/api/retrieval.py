@@ -86,4 +86,5 @@ def _retrieve_semantic(
         provider=provider.name,
         model=provider.model,
         captures_meaning=provider.captures_meaning,
+        relevance_floor=provider.relevance_floor,
     )

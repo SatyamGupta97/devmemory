@@ -377,3 +377,130 @@ def test_hosted_provider_reports_an_unreachable_host() -> None:
 def test_hosted_provider_declares_that_it_captures_meaning(stub_server: str) -> None:
     assert hosted(stub_server).captures_meaning is True
     assert "Captures meaning" in hosted(stub_server).description
+
+# --- Gemini provider --------------------------------------------------------
+#
+# Verified live against gemini-embedding-2 (3072 dimensions); these tests pin the
+# request shape and error handling with a stub so they run without a key.
+
+
+class _GeminiStub(BaseHTTPRequestHandler):
+    status = 200
+    body: dict = {}
+    received: dict = {}
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length", "0"))
+        _GeminiStub.received = {
+            "path": self.path,
+            "api_key": self.headers.get("x-goog-api-key"),
+            "body": json.loads(self.rfile.read(length)),
+        }
+        payload = json.dumps(_GeminiStub.body).encode()
+        self.send_response(_GeminiStub.status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+@pytest.fixture
+def gemini_stub():
+    server = HTTPServer(("127.0.0.1", 0), _GeminiStub)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+    )
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def gemini(base_url: str):
+    from app.services.embeddings import GeminiEmbeddingProvider
+
+    return GeminiEmbeddingProvider(
+        api_key="google-key", model_name="gemini-embedding-2", base_url=base_url, timeout=5.0
+    )
+
+
+def test_gemini_parses_vectors(gemini_stub: str) -> None:
+    _GeminiStub.status = 200
+    _GeminiStub.body = {
+        "embeddings": [{"values": [0.1, 0.2]}, {"values": [0.3, 0.4]}]
+    }
+
+    assert gemini(gemini_stub).embed(["a", "b"]) == [[0.1, 0.2], [0.3, 0.4]]
+
+
+def test_gemini_sends_the_expected_request(gemini_stub: str) -> None:
+    _GeminiStub.status = 200
+    _GeminiStub.body = {"embeddings": [{"values": [1.0]}]}
+
+    gemini(gemini_stub).embed(["hello world"])
+
+    assert _GeminiStub.received["path"].endswith(
+        "/models/gemini-embedding-2:batchEmbedContents"
+    )
+    # The key travels in a header, never in the URL.
+    assert _GeminiStub.received["api_key"] == "google-key"
+    assert "google-key" not in _GeminiStub.received["path"]
+    request = _GeminiStub.received["body"]["requests"][0]
+    assert request["model"] == "models/gemini-embedding-2"
+    assert request["content"]["parts"][0]["text"] == "hello world"
+
+
+def test_gemini_reports_errors_without_the_key(gemini_stub: str) -> None:
+    _GeminiStub.status = 400
+    _GeminiStub.body = {"error": {"message": "API key not valid"}}
+
+    with pytest.raises(EmbeddingError) as caught:
+        gemini(gemini_stub).embed(["hello"])
+
+    assert "400" in str(caught.value)
+    assert "google-key" not in str(caught.value)
+
+
+def test_gemini_rejects_a_short_response(gemini_stub: str) -> None:
+    _GeminiStub.status = 200
+    _GeminiStub.body = {"embeddings": [{"values": [1.0]}]}
+
+    with pytest.raises(EmbeddingError, match="unexpected number of vectors"):
+        gemini(gemini_stub).embed(["a", "b"])
+
+
+def test_gemini_declares_that_it_captures_meaning(gemini_stub: str) -> None:
+    provider = gemini(gemini_stub)
+
+    assert provider.name == "gemini"
+    assert provider.captures_meaning is True
+    assert "Captures meaning" in provider.description
+
+
+def test_gemini_requires_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVMEMORY_EMBEDDING_PROVIDER", "gemini")
+    monkeypatch.delenv("DEVMEMORY_EMBEDDING_API_KEY", raising=False)
+
+    with pytest.raises(EmbeddingError, match="requires"):
+        get_provider()
+
+
+def test_the_relevance_floor_belongs_to_the_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A floor tuned for hashing is wrong for a trained model, and vice versa."""
+    local = LocalHashingProvider(dimensions=64)
+    assert local.relevance_floor > 0
+
+    from app.services.embeddings import GeminiEmbeddingProvider
+
+    gemini_provider = GeminiEmbeddingProvider(api_key="k")
+    monkeypatch.setenv("DEVMEMORY_SEMANTIC_FLOOR_MEANING", "0")
+    assert gemini_provider.relevance_floor == 0.0
+    monkeypatch.setenv("DEVMEMORY_SEMANTIC_FLOOR_MEANING", "0.65")
+    assert gemini_provider.relevance_floor == 0.65

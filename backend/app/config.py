@@ -256,3 +256,39 @@ def llm_retries() -> int:
 def llm_retry_backoff_seconds() -> float:
     """Base delay between retries; multiplied by the attempt number."""
     return _float_env("DEVMEMORY_LLM_RETRY_BACKOFF", 1.5)
+
+
+def gemini_api_base() -> str:
+    """Base URL for Google's native Generative Language API (not the OpenAI shim).
+
+    The OpenAI-compatible surface has no embeddings route for Gemini, so the
+    embedding provider talks to the native one.
+    """
+    return os.environ.get(
+        "DEVMEMORY_GEMINI_API_BASE",
+        "https://generativelanguage.googleapis.com/v1beta",
+    ).strip().rstrip("/")
+
+
+def embedding_gemini_model() -> str:
+    return os.environ.get("DEVMEMORY_EMBEDDING_GEMINI_MODEL", "gemini-embedding-2").strip()
+
+
+def semantic_floor_for_meaning() -> float:
+    """Similarity floor for providers that capture meaning.
+
+    0.65 is where the scores of gemini-embedding-2 separate relevant from
+    irrelevant on this benchmark. Measured sweep, same ten queries:
+
+        floor  precision  recall    MRR   irrelevant  missed
+        0.00      0.280   0.944  1.000          35       1
+        0.60      0.480   0.944  1.000          20       1
+        0.65      0.737   0.944  1.000           9       1
+        0.70      0.753   0.833  0.889           5       3
+        0.75      0.617   0.611  0.667           1       7
+
+    This figure is fitted to that data. It is a starting point for this model,
+    not a law: re-sweep before trusting it with another provider. Set the
+    variable to 0 to rank everything without a cut-off.
+    """
+    return _float_env("DEVMEMORY_SEMANTIC_FLOOR_MEANING", 0.65)

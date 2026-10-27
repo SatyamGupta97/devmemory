@@ -87,7 +87,7 @@ describe("loading, empty and error states", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("No memories yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No memories yet")).toBeInTheDocument();
     expect(screen.getByText(/import a JSON file/)).toBeInTheDocument();
   });
 
@@ -207,7 +207,7 @@ describe("create", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByRole("button", { name: "New memory" }));
     await user.type(screen.getByLabelText("Content"), "Use request IDs everywhere.");
@@ -241,7 +241,7 @@ describe("create", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByRole("button", { name: "New memory" }));
     await user.type(screen.getByLabelText("Content"), "Something.");
@@ -258,7 +258,7 @@ describe("create", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByRole("button", { name: "New memory" }));
     await user.type(screen.getByLabelText("Content"), "Something.");
@@ -334,7 +334,7 @@ describe("detail, edit and delete", () => {
     await user.click(screen.getByRole("button", { name: "Yes, delete permanently" }));
 
     expect(await screen.findByText("Memory deleted.")).toBeInTheDocument();
-    expect(await screen.findByText("No memories yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No memories yet")).toBeInTheDocument();
   });
 
   it("keeps the memory when a delete is refused with 409", async () => {
@@ -371,7 +371,7 @@ describe("import", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByLabelText("JSON"));
     await user.paste(
@@ -394,7 +394,7 @@ describe("import", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByLabelText("JSON"));
     await user.paste("{ not json");
@@ -414,7 +414,7 @@ describe("import", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await screen.findByText("No memories yet.");
+    await screen.findByText("No memories yet");
 
     await user.click(screen.getByLabelText("JSON"));
     await user.paste('{"memories": "nope"}');
@@ -423,5 +423,104 @@ describe("import", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Expected a JSON array of memories",
     );
+  });
+});
+
+describe("tab separation (regression)", () => {
+  // Reported bug: after running the health check, clicking "New memory" appeared
+  // to do nothing, because the form rendered below a tall analysis panel that
+  // shared the same page. Each job now owns a tab, so the editor cannot be
+  // pushed off-screen by an analysis panel.
+  it("can add a memory after visiting the health tab", async () => {
+    let created = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      const method = init?.method ?? "GET";
+      if (path === "/api/memories" && method === "GET") {
+        return json(
+          created
+            ? [memory(), memory({ id: "m2", content: "Brand new memory." })]
+            : [memory()],
+        );
+      }
+      if (path === "/api/memories" && method === "POST") {
+        created = true;
+        return json(memory({ id: "m2" }), 201);
+      }
+      if (path === "/api/health") {
+        return json({
+          generated_at: "2026-01-01T00:00:00Z",
+          analyzer: "deterministic-rules",
+          total_memories: 1,
+          projects: ["payments-api"],
+          summary: {},
+          findings: [],
+          limitations: [],
+        });
+      }
+      if (path === "/api/embeddings/status") return json(DEFAULT_STATUS);
+      if (path === "/api/health/ai/status") return json(AI_STATUS_MOCK);
+      throw new Error(`Unhandled: ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText(/uses PostgreSQL 15/);
+
+    await user.click(screen.getByRole("tab", { name: "Health" }));
+    await user.click(screen.getByRole("button", { name: "Run health check" }));
+    await screen.findByRole("region", { name: "Memory health check" });
+
+    await user.click(screen.getByRole("tab", { name: "Memories" }));
+    await user.click(screen.getByRole("button", { name: "New memory" }));
+
+    // The form is in the visible tab, not buried under the analysis panel.
+    const form = screen.getByLabelText("Content").closest("form");
+    expect(form).not.toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Memory health check" }),
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Content"), "Brand new memory.");
+    await user.type(screen.getByLabelText("Project"), "payments-api");
+    await user.type(screen.getByLabelText("Source"), "manual");
+    await user.click(screen.getByRole("button", { name: "Add memory" }));
+
+    expect(await screen.findByText("Memory added.")).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Memories" });
+    expect(await within(list).findByText("Brand new memory.")).toBeInTheDocument();
+  });
+
+  it("shows only one section at a time", async () => {
+    mockApi({ "GET /api/memories": () => json([memory()]) });
+
+    render(<App />);
+    await screen.findByText(/uses PostgreSQL 15/);
+
+    expect(screen.getByRole("list", { name: "Memories" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Retrieval playground" })).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Retrieval" }));
+
+    expect(screen.getByRole("region", { name: "Retrieval playground" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Memories" })).toBeNull();
+  });
+
+  it("opens a memory from another tab and switches back to it", async () => {
+    mockApi({ "GET /api/memories": () => json([memory()]) });
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Report" }));
+    await screen.findByRole("region", { name: "Inspector report" });
+
+    await user.click(screen.getByRole("tab", { name: "Memories" }));
+    await user.click(await screen.findByRole("button", { name: /uses PostgreSQL/ }));
+
+    const detail = screen.getByRole("article", { name: "Memory detail" });
+    expect(within(detail).getByText("mem-1")).toBeInTheDocument();
   });
 });

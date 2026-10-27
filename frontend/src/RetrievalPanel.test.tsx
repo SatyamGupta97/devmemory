@@ -99,8 +99,10 @@ function mockApi(handlers: Record<string, () => Response>) {
 }
 
 async function openPlayground() {
+  const user = userEvent.setup();
   render(<App />);
   await screen.findByText(/disabled Redis caching/);
+  await user.click(screen.getByRole("tab", { name: "Retrieval" }));
   return screen.getByRole("region", { name: "Retrieval playground" });
 }
 
@@ -213,6 +215,7 @@ describe("retrieval playground", () => {
       screen.getByRole("combobox", { name: "Filter by project" }),
       "payments-api",
     );
+    await user.click(screen.getByRole("tab", { name: "Retrieval" }));
 
     const panel = screen.getByRole("region", { name: "Retrieval playground" });
     await user.type(within(panel).getByLabelText("Coding task"), "caching");
@@ -461,6 +464,7 @@ describe("embedding index", () => {
 
     render(<App />);
     await screen.findByText(/disabled Redis caching/);
+    await user.click(screen.getByRole("tab", { name: "Retrieval" }));
     const panel = screen.getByRole("region", { name: "Retrieval playground" });
 
     expect(

@@ -167,12 +167,12 @@ async function openBenchmark() {
   render(<App />);
   await screen.findByText(/disabled Redis caching/);
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Benchmark" }));
+  await user.click(screen.getByRole("tab", { name: "Benchmark" }));
   return { user, panel: screen.getByRole("region", { name: "Retrieval benchmark" }) };
 }
 
 describe("retrieval benchmark", () => {
-  it("is hidden until requested", async () => {
+  it("only appears on its own tab", async () => {
     mockApi({ "GET /api/memories": () => json([memory()]) });
 
     render(<App />);
@@ -329,14 +329,5 @@ describe("retrieval benchmark", () => {
     expect(rows.some((row) => row.className.includes("row-invalid"))).toBe(true);
   });
 
-  it("closes when asked", async () => {
-    mockApi({ "GET /api/memories": () => json([memory()]) });
 
-    const { user, panel } = await openBenchmark();
-    await user.click(within(panel).getByRole("button", { name: "Close" }));
-
-    expect(
-      screen.queryByRole("region", { name: "Retrieval benchmark" }),
-    ).not.toBeInTheDocument();
-  });
 });

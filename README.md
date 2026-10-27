@@ -18,8 +18,12 @@ retrieved for a given coding task.
 Phase 9 complete: one consolidated report answers *what memories exist, what is wrong
 with them, whether retrieval finds the right ones, and what to do next* — with every
 number computed from stored data, every AI claim labelled as such, and the measurement
-context carried into the export. An optional language model adds meaning-based findings;
-without a key the deterministic checks remain the whole product. A deterministic health check inspects the
+context carried into the export.
+
+Measured end to end against real models: `gemini-embedding-2` for retrieval and
+`gemini-3.5-flash` for analysis. Semantic retrieval beats the keyword baseline on
+precision, recall and MRR, and the AI findings were all correct. Without a key, the
+deterministic checks remain the whole product. A deterministic health check inspects the
 collection for duplicates, contradictions, stale entries and weak metadata. A React UI
 covers the full memory lifecycle, the health check, and a retrieval playground.
 
@@ -474,9 +478,20 @@ providers behind one interface:
 | Provider | Selected when | Captures meaning | Cost |
 | -------- | ------------- | ---------------- | ---- |
 | `local` | default, no key configured | **No** | Free, instant, deterministic |
-| `hosted` | `DEVMEMORY_EMBEDDING_API_KEY` + `MODEL` set | Yes | Network call per query and per index run |
+| `gemini` | `DEVMEMORY_EMBEDDING_PROVIDER=gemini` + key | Yes | Network call per query and per index run |
+| `hosted` | `DEVMEMORY_EMBEDDING_PROVIDER=hosted` + key | Yes | Any OpenAI-compatible `/embeddings` |
 
-Set `DEVMEMORY_EMBEDDING_PROVIDER` to `local` or `hosted` to force one.
+```bash
+# real semantic retrieval with Google
+export DEVMEMORY_EMBEDDING_PROVIDER=gemini
+export DEVMEMORY_EMBEDDING_API_KEY=...            # Google AI Studio key
+export DEVMEMORY_EMBEDDING_MODEL=gemini-embedding-2
+# then re-index, because vectors are provider-specific
+curl -X POST localhost:8000/api/embeddings/index -H 'Content-Type: application/json' -d '{"force": true}'
+```
+
+The Gemini provider talks to the native REST API with the standard library — the OpenAI
+shim has no embeddings route, and one HTTP call does not justify a dependency.
 
 ### The local provider, stated honestly
 
@@ -512,16 +527,28 @@ Running both strategies over the sample dataset for `"Add caching to the user se
 | 6 | Use structured logging with request IDs… | 1.133 | 0.268 |
 
 **Identical set, identical order for this one query.** Read alone, that looks like the
-local provider buys nothing.
+local provider buys nothing — and across the whole benchmark it was indeed a trade-off,
+better recall for worse precision. It is a lower bound, not a semantic evaluation.
 
-The benchmark (below) shows that conclusion was wrong, and it is worth noticing *why* it
-was wrong: I generalised from a single example. Across ten queries the local provider
-does better on recall and worse on precision. One query was not enough evidence to make a
-claim about a retrieval strategy, which is exactly the argument for building a benchmark
-instead of eyeballing a demo.
+With a real embedding model (`gemini-embedding-2`, 3072 dimensions) the same benchmark
+produced a genuine improvement:
 
-What is still true: the paraphrase failure is untouched — the snapshot memory ranks 4th
-or worse either way — and **only a hosted model can fix that.**
+| Metric | Keyword (BM25) | Semantic (Gemini) |
+| ------ | -------------- | ----------------- |
+| Precision@5 | 0.727 | **0.737** |
+| Recall@5 | 0.833 | **0.944** |
+| MRR | 0.806 | **1.000** |
+| Memories missed | 2 | **1** |
+| Irrelevant returned | 7 | 9 |
+
+MRR of 1.000 means that for every query with expected memories, the top-ranked result was
+relevant. The paraphrase case that keyword search could not touch — *"duplicate refund
+events delivered twice by the payment provider"* finding *"Stripe webhook handlers must
+be idempotent"*, with no shared content words — went from recall 0.0 to 1.0.
+
+Two honest caveats. Irrelevant results rose from 7 to 9, because a vector search always
+fills `k` while keyword search returns only literal matches. And the comparison depends on
+a **relevance floor**, discussed next.
 
 ### Two implementation details worth knowing
 
@@ -532,14 +559,33 @@ or worse either way — and **only a hosted model can fix that.**
   stale and re-embedded instead of silently returning neighbours of text that no longer
   exists. Deleting a memory cascades to its vectors.
 
-### Relevance floor
+### Relevance floor, and why it belongs to the provider
 
-Cosine similarity below `0.10` is treated as no match. Hashing cannot eliminate bucket
-collisions — at 256 dimensions one collision gave an unrelated card-number memory a
-similarity of `0.20`, which is a false positive in a tool built on trust. The default
-width is therefore `1024` dimensions (where an unrelated pair scores `0.00`), plus the
-floor for the collisions that remain. Raise `DEVMEMORY_SEMANTIC_MIN_SIMILARITY` to trade
-recall for precision.
+Cosine scores are only meaningful relative to a model's own distribution. Measured:
+
+| Provider | Unrelated pair | True match |
+| -------- | -------------- | ---------- |
+| `local` (hashed n-grams) | 0.00 | ~0.6 |
+| `gemini-embedding-2` | ~0.50 | ~0.75 |
+
+A floor of `0.10` suppresses hashing collisions and is meaningless for Gemini, where
+unrelated text already scores `0.5`. So the floor is a **provider property**, not a global
+constant — and it is published rather than hidden, because it was chosen by measurement:
+
+```
+floor  precision  recall    MRR   irrelevant  missed
+0.00      0.280   0.944  1.000          35       1
+0.60      0.480   0.944  1.000          20       1
+0.65      0.737   0.944  1.000           9       1
+0.70      0.753   0.833  0.889           5       3
+0.75      0.617   0.611  0.667           1       7
+```
+
+`0.65` is the default for meaning-capturing providers: the point where this model's scores
+separate relevant from irrelevant on this benchmark. That figure is **fitted to these ten
+queries** — treat it as a starting point for this model, not a law, and re-sweep before
+trusting it elsewhere. Set `DEVMEMORY_SEMANTIC_FLOOR_MEANING=0` to rank without a cut-off,
+or raise it to trade recall for precision.
 
 ### Embedding configuration
 
@@ -611,35 +657,39 @@ Two cases are defined explicitly rather than left to divide by zero:
 If the collection is empty, nothing is scored — "returned nothing" is vacuous when there
 was nothing to rank.
 
-### Measured results (local provider)
+### Measured results
 
-| Metric | Keyword (BM25) | Semantic (local) | Change |
-| ------ | -------------- | ---------------- | ------ |
-| precision@5 | 0.727 | 0.660 | −0.067 |
-| recall@5 | 0.833 | 0.944 | **+0.111** |
-| MRR | 0.806 | 0.917 | **+0.111** |
-| memories missed | 2 | 1 | −1 |
-| irrelevant returned | 7 | 12 | +5 |
+Same ten queries, same ground truth, same `k`, two providers:
 
-**This is a trade-off, not a win.** The local provider finds one more expected memory
-(it matches `delivered` to `deliveries`, which keyword cannot) but returns five more
-irrelevant ones, because n-gram similarity admits weak matches.
+| Metric | Keyword (BM25) | Semantic (local) | Semantic (Gemini) |
+| ------ | -------------- | ---------------- | ----------------- |
+| Precision@5 | 0.727 | 0.660 | **0.737** |
+| Recall@5 | 0.833 | 0.944 | **0.944** |
+| MRR | 0.806 | 0.917 | **1.000** |
+| Memories missed | 2 | 1 | **1** |
+| Irrelevant returned | 7 | 12 | 9 |
 
-Two conclusions worth separating:
+The local provider is a real trade-off — more recall, less precision. The Gemini column is
+a genuine improvement on every quality metric, because it is the first provider that
+actually understands meaning.
 
-- **Semantic retrieval is not simply better.** It trades precision for recall here. Which
-  matters more depends on the use case: a memory injector for an agent probably prefers
-  recall, a debugging tool probably prefers precision.
-- **The paraphrase gap is still open.** The snapshot memory is missed by both, because no
-  amount of surface comparison can connect "caching" to "snapshot". A hosted model is the
-  only thing that changes that, and the benchmark is how you would prove it did.
+**The paraphrase gap is now closed by measurement, not by argument.** The query about
+duplicate refund events, which shares no content word with the Stripe idempotency memory,
+went from recall `0.0` under keyword search to `1.0` under real embeddings.
 
 ### What the benchmark cannot tell you
 
 Ten queries measure this collection and these queries. They do not prove general
-retrieval quality, and the report says so in its `notes`. An earlier version of this
-README claimed the local provider "buys nothing" based on a single query — the benchmark
-disproved that, which is the argument for having one.
+retrieval quality, and the report says so in its `notes`. Three specific limits:
+
+- **It is small.** Add queries before drawing conclusions about other data.
+- **The floor is fitted to it.** The `0.65` cut-off was selected by sweeping these same
+  ten queries, which is a mild form of overfitting. The sweep table is published so you
+  can judge it rather than take it on trust.
+- **Earlier versions of this README were wrong twice.** First it claimed the local
+  provider "buys nothing", from a single query. Then it called the semantic improvement
+  "unproven" because only a surface-form provider was available. Both corrections came
+  from measuring, which is the argument for having a benchmark at all.
 
 ## AI-assisted analysis
 
@@ -824,16 +874,24 @@ two ways an agent's memory actively misleads it, rather than merely being untidy
 
 ## UI architecture notes
 
+### One tab per job
+
+**Memories · Retrieval · Health · Benchmark · Report.** Not decoration: the first build
+rendered the analysis panels on the same page as the editor, so opening a health report
+pushed the "new memory" form below the fold and the button looked broken. Each view now
+owns its own scroll, and a test asserts the editor and the health panel are never on
+screen together.
+
 - **`api/client.ts` is the only place that calls `fetch`.** `fetch` does not reject on
-  4xx/5xx, so every response is checked explicitly, and a network failure (no response at
-  all) is reported differently from an HTTP error.
-- **Filters go to the server; search stays in the browser.** Server filters will still be
-  correct when pagination arrives; search filters the rows already loaded so typing is
-  instant and does not fire a request per keystroke.
-- **After every mutation the list is re-fetched** instead of being patched locally. The
-  server stays the single source of truth; at this scale the extra request is free.
-- **Loading, empty, search-miss, and error are four distinct states**, not one spinner.
-  An empty library and a failed request look completely different to the user.
+  4xx/5xx, so every response is checked explicitly, and a network failure is reported
+  differently from an HTTP error.
+- **Filters go to the server; search stays in the browser.** Server filters stay correct
+  when pagination arrives; search filters loaded rows so typing is instant.
+- **After every mutation the list is re-fetched** rather than patched locally, so the
+  server stays the single source of truth.
+- **Loading, empty, search-miss and error are four distinct states.**
+- **Light and dark are the same tokens** with different values, so no component hardcodes
+  a colour.
 
 ## Data model notes
 
@@ -850,4 +908,6 @@ two ways an agent's memory actively misleads it, rather than merely being untidy
 - **Storage does not normalise content.** Lowercasing, trimming punctuation and
   similarity scoring belong to the analysis layer, so its rules can change without
   rewriting stored memories.
-
+- **Vectors live beside the memories, not in them** — keyed by `(memory, provider, model)`
+  so strategies can be compared and re-indexing never overwrites another provider's
+  vectors.

@@ -6,9 +6,7 @@ import type {
   RetrievalStrategy,
 } from "../types";
 
-interface Props {
-  onClose: () => void;
-}
+interface Props {}
 
 function pct(value: number | null): string {
   return value === null ? "—" : value.toFixed(3);
@@ -26,7 +24,7 @@ function summaryRows(report: BenchmarkReport): Array<[string, string]> {
   ];
 }
 
-export function BenchmarkPanel({ onClose }: Props) {
+export function BenchmarkPanel(_props: Props) {
   const [definition, setDefinition] = useState<BenchmarkDefinition | null>(null);
   const [reports, setReports] = useState<Partial<Record<RetrievalStrategy, BenchmarkReport>>>(
     {},
@@ -91,9 +89,6 @@ export function BenchmarkPanel({ onClose }: Props) {
     <section className="benchmark" aria-label="Retrieval benchmark">
       <div className="health-head">
         <h2 className="form-heading">Retrieval benchmark</h2>
-        <button type="button" className="link" onClick={onClose}>
-          Close
-        </button>
       </div>
 
       {definition && (

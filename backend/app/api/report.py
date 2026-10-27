@@ -143,6 +143,7 @@ def _semantic_benchmark(conn, definition, memories, scope, provider):
             provider=provider.name,
             model=provider.model,
             captures_meaning=provider.captures_meaning,
+            relevance_floor=provider.relevance_floor,
         )
         return [match.memory.id for match in result.matches]
 

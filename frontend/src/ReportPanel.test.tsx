@@ -164,7 +164,7 @@ async function openReport() {
   render(<App />);
   await screen.findByText(/disabled Redis caching/);
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Inspector report" }));
+  await user.click(screen.getByRole("tab", { name: "Report" }));
   return {
     user,
     panel: await screen.findByRole("region", { name: "Inspector report" }),
@@ -185,7 +185,7 @@ describe("inspector report", () => {
     ).not.toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Inspector report" }));
+    await user.click(screen.getByRole("tab", { name: "Report" }));
 
     expect(
       await screen.findByRole("region", { name: "Inspector report" }),
@@ -290,7 +290,7 @@ describe("inspector report", () => {
       screen.getByRole("combobox", { name: "Filter by project" }),
       "payments-api",
     );
-    await user.click(screen.getByRole("button", { name: "Inspector report" }));
+    await user.click(screen.getByRole("tab", { name: "Report" }));
 
     const panel = await screen.findByRole("region", { name: "Inspector report" });
     const markdown = within(panel).getByRole("link", { name: "Export Markdown" });

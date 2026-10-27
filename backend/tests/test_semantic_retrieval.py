@@ -411,3 +411,49 @@ def test_the_floor_is_documented_in_the_notes() -> None:
     )
 
     assert any("treated as no match" in note for note in result.notes)
+
+
+def test_the_provider_floor_is_used_when_given() -> None:
+    """A meaning-capturing provider's own cut-off must be respected."""
+    provider = LocalHashingProvider(dimensions=1024)
+    memories = [make_memory("a", "We disabled Redis caching for user records.")]
+    vectors = {"a": provider.embed(["We disabled Redis caching for user records."])[0]}
+    query_vector = provider.embed(["redis caching"])[0]
+
+    # An impossible floor filters out even a genuine match.
+    result = retrieval.retrieve_semantic(
+        memories,
+        "redis caching",
+        vectors,
+        query_vector,
+        provider=provider.name,
+        model=provider.model,
+        relevance_floor=0.999,
+    )
+
+    assert result.matches == []
+
+
+def test_no_floor_returns_ranked_results_even_when_scores_are_low() -> None:
+    provider = LocalHashingProvider(dimensions=1024)
+    memories = [
+        make_memory("a", "We disabled Redis caching for user records."),
+        make_memory("b", "Never log full card numbers."),
+    ]
+    vectors = {
+        memory.id: vector
+        for memory, vector in zip(memories, provider.embed([m.content for m in memories]))
+    }
+
+    result = retrieval.retrieve_semantic(
+        memories,
+        "redis caching",
+        vectors,
+        provider.embed(["redis caching"])[0],
+        provider=provider.name,
+        model=provider.model,
+        relevance_floor=0.0,
+    )
+
+    assert result.matches
+    assert any("No similarity floor is applied" in note for note in result.notes)

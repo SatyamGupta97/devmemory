@@ -4,7 +4,7 @@ import type { InspectorReport } from "../types";
 
 interface Props {
   projectFilter: string;
-  onClose: () => void;
+  onSelectMemory?: (id: string) => void;
 }
 
 function pct(value: number | null): string {
@@ -18,7 +18,7 @@ function pct(value: number | null): string {
  * sees a recall figure without knowing it came from ten queries over a
  * surface-form provider would draw the wrong conclusion.
  */
-export function ReportPanel({ projectFilter, onClose }: Props) {
+export function ReportPanel({ projectFilter, onSelectMemory }: Props) {
   const [report, setReport] = useState<InspectorReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +73,6 @@ export function ReportPanel({ projectFilter, onClose }: Props) {
     <section className="report" aria-label="Inspector report">
       <div className="health-head">
         <h2 className="form-heading">Inspector report</h2>
-        <button type="button" className="link" onClick={onClose}>
-          Close
-        </button>
       </div>
 
       <p className="hint">
@@ -252,9 +249,7 @@ export function ReportPanel({ projectFilter, onClose }: Props) {
             </div>
             <p className="finding-explanation">{item.rationale}</p>
             {item.related.length > 0 && (
-              <p className="hint">
-                Related findings: {item.related.length}
-              </p>
+              <p className="hint">Related findings: {item.related.length}</p>
             )}
           </li>
         ))}
@@ -271,6 +266,18 @@ export function ReportPanel({ projectFilter, onClose }: Props) {
             {report.ai.findings.map((finding) => (
               <li key={finding.id}>
                 {finding.title} — uncertainty {finding.uncertainty}
+                {onSelectMemory && finding.memory_ids.length > 0 && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => onSelectMemory(finding.memory_ids[0]!)}
+                    >
+                      open
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>

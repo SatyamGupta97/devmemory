@@ -123,6 +123,7 @@ describe("health check", () => {
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
 
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -143,6 +144,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -165,6 +167,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -181,6 +184,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -201,6 +205,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -227,6 +232,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     const panel = await screen.findByRole("region", { name: "Memory health check" });
@@ -242,6 +248,7 @@ describe("health check", () => {
 
     render(<App />);
     await screen.findByText(/uses PostgreSQL 15/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("analysis failed");
@@ -261,6 +268,7 @@ describe("health check", () => {
       screen.getByRole("combobox", { name: "Filter by project" }),
       "payments-api",
     );
+    await user.click(screen.getByRole("tab", { name: "Health" }));
     await user.click(screen.getByRole("button", { name: "Run health check" }));
 
     await waitFor(() =>

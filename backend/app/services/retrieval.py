@@ -207,6 +207,7 @@ def retrieve_semantic(
     provider: str = "local",
     model: str = "",
     captures_meaning: bool = False,
+    relevance_floor: float | None = None,
 ) -> RetrievalResult:
     """Rank memories by vector similarity.
 
@@ -216,7 +217,9 @@ def retrieve_semantic(
     """
     matches: list[RetrievalMatch] = []
     missing = 0
-    floor = semantic_min_similarity()
+    # The caller passes the provider's own floor, because the right cut-off
+    # depends on that model's score distribution.
+    floor = semantic_min_similarity() if relevance_floor is None else relevance_floor
 
     for memory in memories:
         vector = vectors.get(memory.id)
@@ -257,10 +260,17 @@ def retrieve_semantic(
         matches = matches[:limit]
 
     notes = semantic_notes(captures_meaning, provider, model)
-    notes.append(
-        f"Similarity below {floor:.2f} is treated as no match; hashing can produce "
-        "small non-zero scores between unrelated texts."
-    )
+    if floor > 0:
+        notes.append(
+            f"Similarity below {floor:.2f} is treated as no match; hashing can "
+            "produce small non-zero scores between unrelated texts."
+        )
+    else:
+        notes.append(
+            "No similarity floor is applied: this provider's scores rank meaning "
+            "directly, and an absolute cut-off would not tell relevant from "
+            "irrelevant."
+        )
     if missing:
         notes.append(
             f"{missing} memory/memories in scope have no stored vector and were "

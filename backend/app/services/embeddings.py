@@ -28,9 +28,11 @@ from app.config import (
     embedding_api_key,
     embedding_base_url,
     embedding_batch_size,
+    embedding_gemini_model,
     embedding_model,
     embedding_provider_name,
     embedding_timeout_seconds,
+    gemini_api_base,
     local_embedding_dimensions,
 )
 from app.services.text import tokens
@@ -39,6 +41,10 @@ from app.services.text import tokens
 TOKEN_WEIGHT = 1.0
 NGRAM_WEIGHT = 0.4
 NGRAM_SIZE = 4
+
+#: Vector width per model, learned from the provider once. Probing on every
+#: ``dimensions`` access would spend a network call and money per status request.
+_DIMENSION_CACHE: dict[str, int] = {}
 
 
 class EmbeddingError(RuntimeError):
@@ -53,6 +59,17 @@ class EmbeddingProvider(Protocol):
 
     @property
     def name(self) -> str: ...
+
+    @property
+    def relevance_floor(self) -> float:
+        """Cosine score below which a result is treated as noise.
+
+        A provider property rather than a global constant because the score
+        distribution belongs to the model. Hashing produces a near-zero baseline
+        and needs a floor to suppress collisions; a trained embedding model has a
+        baseline around 0.5, where the same floor would be meaningless and an
+        absolute cut-off could not separate relevant from irrelevant anyway.
+        """
 
     @property
     def model(self) -> str: ...
@@ -135,6 +152,13 @@ class LocalHashingProvider:
         return False
 
     @property
+    def relevance_floor(self) -> float:
+        """Non-zero: hashing collisions manufacture small similarities."""
+        from app.config import semantic_min_similarity
+
+        return semantic_min_similarity()
+
+    @property
     def description(self) -> str:
         return (
             "Deterministic hashed token and character n-gram vectors. Compares "
@@ -192,6 +216,13 @@ class HostedEmbeddingProvider:
     @property
     def captures_meaning(self) -> bool:
         return True
+
+    @property
+    def relevance_floor(self) -> float:
+        """Default 0; configurable, because a floor trades recall for precision."""
+        from app.config import semantic_floor_for_meaning
+
+        return semantic_floor_for_meaning()
 
     @property
     def description(self) -> str:
@@ -275,6 +306,148 @@ class HostedEmbeddingProvider:
         return vectors
 
 
+@dataclass(frozen=True)
+class GeminiEmbeddingProvider:
+    """Google Gemini embeddings over the native REST API.
+
+    Speaks the same ``EmbeddingProvider`` interface as the others, so retrieval,
+    indexing and the benchmark need no knowledge of it. Uses the stdlib rather
+    than the ``google-genai`` SDK: one HTTP call does not justify a dependency,
+    and the request shape is small enough to read.
+
+    This is the provider that makes "semantic" mean semantic: 3072 dimensions
+    trained on meaning, not on character overlap.
+    """
+
+    api_key: str
+    model_name: str = "gemini-embedding-2"
+    base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    timeout: float = 20.0
+    batch_size: int = 32
+    _dimensions: int = 0
+
+    @property
+    def name(self) -> str:
+        return "gemini"
+
+    @property
+    def model(self) -> str:
+        return self.model_name
+
+    @property
+    def captures_meaning(self) -> bool:
+        return True
+
+    @property
+    def relevance_floor(self) -> float:
+        """Default 0.
+
+        Measured: unrelated pairs sit near 0.5 while true matches sit near 0.75,
+        so no absolute cut-off cleanly separates them. A positive value trades
+        recall for precision and is available via
+        DEVMEMORY_SEMANTIC_FLOOR_MEANING for anyone who wants it.
+        """
+        from app.config import semantic_floor_for_meaning
+
+        return semantic_floor_for_meaning()
+
+    @property
+    def description(self) -> str:
+        return (
+            f"Google Gemini embedding model '{self.model_name}'. Captures meaning, "
+            "so a paraphrase with no shared words can still be retrieved. Costs a "
+            "network call per query and per indexing run."
+        )
+
+    @property
+    def dimensions(self) -> int:
+        if self._dimensions:
+            return self._dimensions
+        if self.model_name in _DIMENSION_CACHE:
+            return _DIMENSION_CACHE[self.model_name]
+        probe = self.embed(["dimension probe"])
+        _DIMENSION_CACHE[self.model_name] = len(probe[0])
+        return len(probe[0])
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), self.batch_size):
+            vectors.extend(self._embed_batch(texts[start : start + self.batch_size]))
+        return vectors
+
+    def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        payload = json.dumps(
+            {
+                "requests": [
+                    {
+                        "model": f"models/{self.model_name}",
+                        "content": {"parts": [{"text": text}]},
+                    }
+                    for text in texts
+                ]
+            }
+        ).encode()
+
+        request = urllib.request.Request(
+            f"{self.base_url}/models/{self.model_name}:batchEmbedContents",
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                # The key travels in a header, never in the query string, so it
+                # cannot leak into a URL that gets logged.
+                "x-goog-api-key": self.api_key,
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            raise EmbeddingError(
+                f"Embedding provider returned HTTP {error.code}"
+                + self._safe_reason(error)
+            ) from error
+        except urllib.error.URLError as error:
+            raise EmbeddingError(
+                f"Could not reach the embedding provider: {error.reason}"
+            ) from error
+        except json.JSONDecodeError as error:
+            raise EmbeddingError("Embedding provider returned invalid JSON") from error
+
+        items = body.get("embeddings")
+        if not isinstance(items, list) or len(items) != len(texts):
+            raise EmbeddingError(
+                "Embedding provider returned an unexpected number of vectors"
+            )
+
+        vectors: list[list[float]] = []
+        for item in items:
+            values = item.get("values") if isinstance(item, dict) else None
+            if not isinstance(values, list) or not values:
+                raise EmbeddingError("Embedding provider returned an empty vector")
+            vectors.append([float(value) for value in values])
+
+        if len({len(vector) for vector in vectors}) != 1:
+            raise EmbeddingError("Embedding provider returned inconsistent dimensions")
+
+        return vectors
+
+    @staticmethod
+    def _safe_reason(error: urllib.error.HTTPError) -> str:
+        try:
+            body = json.loads(error.read())
+            message = body.get("error", {}).get("message", "")
+            if isinstance(message, str) and message:
+                return f": {message[:200]}"
+        except Exception:  # noqa: BLE001 - the body may not be JSON
+            pass
+        return ""
+
+
 def get_provider() -> EmbeddingProvider:
     """Select the provider from configuration.
 
@@ -288,6 +461,20 @@ def get_provider() -> EmbeddingProvider:
 
     if configured == "local":
         return LocalHashingProvider(dimensions=local_embedding_dimensions())
+
+    if configured == "gemini":
+        if not key:
+            raise EmbeddingError(
+                "DEVMEMORY_EMBEDDING_PROVIDER=gemini requires "
+                "DEVMEMORY_EMBEDDING_API_KEY (a Google AI Studio key)."
+            )
+        return GeminiEmbeddingProvider(
+            api_key=key,
+            model_name=model or embedding_gemini_model(),
+            base_url=gemini_api_base(),
+            timeout=embedding_timeout_seconds(),
+            batch_size=embedding_batch_size(),
+        )
 
     if configured == "hosted":
         if not key or not model:
