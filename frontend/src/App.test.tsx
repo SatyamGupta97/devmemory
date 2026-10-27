@@ -191,6 +191,40 @@ describe("stats and list", () => {
       ),
     );
   });
+
+  it("keeps the other projects selectable while one is filtered", async () => {
+    mockApi({
+      "GET /api/memories": (url: string) => {
+        const project = new URL(url).searchParams.get("project");
+        return json(
+          project === "payments-api"
+            ? [memory()]
+            : [
+                memory(),
+                memory({ id: "mem-2", project: "analytics", content: "Exports run nightly." }),
+              ],
+        );
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText(/Exports run nightly/);
+
+    const select = screen.getByRole("combobox", {
+      name: "Filter by project",
+    }) as HTMLSelectElement;
+    await user.selectOptions(select, "payments-api");
+
+    // The server only sent payments-api, but the picker must not hide analytics.
+    await waitFor(() =>
+      expect([...select.options].map((option) => option.value)).toEqual([
+        "",
+        "analytics",
+        "payments-api",
+      ]),
+    );
+  });
 });
 
 describe("create", () => {

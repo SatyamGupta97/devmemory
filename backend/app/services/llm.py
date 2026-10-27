@@ -200,8 +200,8 @@ def unavailable_reason() -> str:
         )
     if not llm_api_key() and not llm_model():
         return (
-            "AI-assisted analysis is not configured. Set DEVMEMORY_LLM_API_KEY and "
-            "DEVMEMORY_LLM_MODEL. The deterministic health check works without it."
+            "Set DEVMEMORY_LLM_API_KEY and DEVMEMORY_LLM_MODEL to enable "
+            "AI-assisted analysis. The deterministic health check works without it."
         )
     if not llm_api_key():
         return "DEVMEMORY_LLM_API_KEY is not set."

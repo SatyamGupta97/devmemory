@@ -6,7 +6,10 @@ import type {
   RetrievalStrategy,
 } from "../types";
 
-interface Props {}
+interface Props {
+  /** Total memories loaded; with none, there is nothing to score against. */
+  memoryCount: number;
+}
 
 function pct(value: number | null): string {
   return value === null ? "—" : value.toFixed(3);
@@ -24,7 +27,8 @@ function summaryRows(report: BenchmarkReport): Array<[string, string]> {
   ];
 }
 
-export function BenchmarkPanel(_props: Props) {
+export function BenchmarkPanel({ memoryCount }: Props) {
+  const empty = memoryCount === 0;
   const [definition, setDefinition] = useState<BenchmarkDefinition | null>(null);
   const [reports, setReports] = useState<Partial<Record<RetrievalStrategy, BenchmarkReport>>>(
     {},
@@ -103,7 +107,7 @@ export function BenchmarkPanel(_props: Props) {
         <button
           type="button"
           className="button button-primary"
-          disabled={loading !== null}
+          disabled={loading !== null || empty}
           onClick={() => void runBoth()}
         >
           {loading === "both" ? "Running…" : "Compare keyword vs semantic"}
@@ -111,7 +115,7 @@ export function BenchmarkPanel(_props: Props) {
         <button
           type="button"
           className="button"
-          disabled={loading !== null}
+          disabled={loading !== null || empty}
           onClick={() => void run("keyword")}
         >
           {loading === "keyword" ? "Running…" : "Run keyword"}
@@ -119,7 +123,7 @@ export function BenchmarkPanel(_props: Props) {
         <button
           type="button"
           className="button"
-          disabled={loading !== null}
+          disabled={loading !== null || empty}
           onClick={() => void run("semantic")}
         >
           {loading === "semantic" ? "Running…" : "Run semantic"}
@@ -132,14 +136,23 @@ export function BenchmarkPanel(_props: Props) {
         </p>
       )}
 
-      {!keyword && !semantic && !error && (
+      {empty ? (
         <p className="placeholder">
-          Run the benchmark to measure retrieval quality. Without it, a ranking can
-          only be admired, not evaluated.
+          No memories to score. Import memories first, then run the benchmark
+          against the version-controlled queries.
         </p>
+      ) : (
+        !keyword &&
+        !semantic &&
+        !error && (
+          <p className="placeholder">
+            Run the benchmark to measure retrieval quality. Without it, a ranking
+            can only be admired, not evaluated.
+          </p>
+        )
       )}
 
-      {compared && (
+      {!empty && compared && (
         <div className="benchmark-compare">
           <h3 className="embedding-heading">Measured comparison</h3>
           <div className="compare-grid">
@@ -169,7 +182,7 @@ export function BenchmarkPanel(_props: Props) {
         </div>
       )}
 
-      {!compared && keyword && (
+      {!empty && !compared && keyword && (
         <div className="benchmark-single">
           <dl className="detail-grid">
             {summaryRows(keyword).map(([label, value]) => (
@@ -182,7 +195,7 @@ export function BenchmarkPanel(_props: Props) {
         </div>
       )}
 
-      {keyword && (
+      {!empty && keyword && (
         <table className="benchmark-table">
           <caption>
             Per-query outcomes{compared ? " for both strategies" : " for keyword"}
@@ -196,7 +209,7 @@ export function BenchmarkPanel(_props: Props) {
               <th scope="col">RR</th>
               {compared && <th scope="col">P@k (sem)</th>}
               {compared && <th scope="col">R@k (sem)</th>}
-              <th scope="col">Missed</th>
+              <th scope="col">{compared ? "Missed (kw)" : "Missed"}</th>
             </tr>
           </thead>
           <tbody>

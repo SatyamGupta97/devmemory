@@ -18,11 +18,12 @@
   --text-muted: #646a7d;
   --text-faint: #8b91a3;
 
-  /* accent */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #eef0ff;
-  --accent-ring: rgba(79, 70, 229, 0.35);
+  /* accent: deep navy. Flat fills only, no gradient, high contrast on white. */
+  --accent: #1f3a5f;
+  --accent-hover: #16293f;
+  --accent-soft: #eef2f7;
+  --accent-ring: #c6d2e0;
+  --on-accent: #ffffff;
 
   /* semantic */
   --danger: #b42318;
@@ -50,40 +51,16 @@
 
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, Helvetica, Arial, sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1016;
-    --surface: #161922;
-    --surface-sunken: #1b1f2a;
-    --border: #262b38;
-    --border-strong: #333a4a;
-    --text: #e8eaf1;
-    --text-muted: #9aa1b4;
-    --text-faint: #737b90;
-    --accent: #8b83ff;
-    --accent-hover: #a29bff;
-    --accent-soft: #1e1f3a;
-    --accent-ring: rgba(139, 131, 255, 0.4);
-    --danger: #ff9c94;
-    --danger-soft: #2a1717;
-    --danger-border: #4a2622;
-    --success: #7de0aa;
-    --success-soft: #10231a;
-    --success-border: #1f4633;
-    --warning: #f0c06a;
-    --warning-soft: #241d0f;
-    --warning-border: #443619;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
-  }
-}
+/* Light only. The palette is defined once, so the page never flips to a dark
+ * theme when the OS or browser prefers one. */
 
 * {
   box-sizing: border-box;
@@ -133,8 +110,8 @@ code,
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(140deg, var(--accent), #7c6cf0);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   font-size: 15px;
   box-shadow: var(--shadow-sm);
 }
@@ -325,9 +302,9 @@ textarea::placeholder {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 button:focus-visible,
@@ -430,7 +407,7 @@ a:focus-visible {
 .button-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-primary:hover:not(:disabled) {
@@ -1178,7 +1155,7 @@ a:focus-visible {
 }
 
 .ai-finding {
-  border-left-color: #7c6cf0;
+  border-left-color: var(--accent);
   margin-bottom: var(--gap-sm);
 }
 

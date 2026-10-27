@@ -15,10 +15,13 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 9 complete: one consolidated report answers *what memories exist, what is wrong
-with them, whether retrieval finds the right ones, and what to do next* — with every
-number computed from stored data, every AI claim labelled as such, and the measurement
-context carried into the export.
+Phase 10 complete: the whole product was walked end to end against an empty database —
+import, search and filter, create, edit, delete, health check, retrieval, benchmark,
+report and both exports — and the friction that walk exposed is fixed. An empty
+collection now says what to do instead of reporting "no problems" or showing ten
+zero-score queries, the provider caveat is stated once per ranking rather than on every
+match, the project picker no longer collapses to the project you just chose, and
+selecting a memory on a phone scrolls the detail into view.
 
 Measured end to end against real models: `gemini-embedding-2` for retrieval and
 `gemini-3.5-flash` for analysis. Semantic retrieval beats the keyword baseline on

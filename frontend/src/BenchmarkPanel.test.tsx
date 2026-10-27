@@ -183,6 +183,23 @@ describe("retrieval benchmark", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("offers no scores when there are no memories", async () => {
+    mockApi({ "GET /api/memories": () => json([]) });
+
+    render(<App />);
+    await screen.findByText(/No memories yet/);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Benchmark" }));
+
+    const panel = await screen.findByRole("region", { name: "Retrieval benchmark" });
+    expect(within(panel).getByText(/No memories to score/)).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Compare keyword vs semantic" }),
+    ).toBeDisabled();
+    expect(within(panel).getByRole("button", { name: "Run keyword" })).toBeDisabled();
+    expect(within(panel).getByRole("button", { name: "Run semantic" })).toBeDisabled();
+  });
+
   it("describes the benchmark before running it", async () => {
     mockApi({ "GET /api/memories": () => json([memory()]) });
 

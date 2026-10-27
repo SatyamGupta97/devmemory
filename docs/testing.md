@@ -22,7 +22,7 @@ source .venv/bin/activate
 pytest -v
 ```
 
-- **71 tests** across storage, CRUD, import, CORS, validation and persistence.
+- **373 tests** across storage, CRUD, import, CORS, validation and persistence.
 - Works from the repo root too (`backend/.venv/bin/pytest -v`) — `pytest.ini` puts
   `backend/` on `sys.path`.
 
@@ -41,7 +41,7 @@ pytest -v
 
 ```bash
 cd frontend
-npm test           # 25 tests
+npm test           # 86 tests
 npm run typecheck  # tsc --noEmit
 npm run build      # production build
 ```
@@ -445,7 +445,7 @@ Both servers running, sample data imported, vectors indexed.
 
 - [ ] Click **Inspector report** in the toolbar → the panel loads (it may take a second;
       it runs the benchmark).
-- [ ] The header reads `19 memories in 2 projects` and says nothing here is illustrative.
+- [ ] The header reads `19 memories in 3 projects` and says nothing here is illustrative.
 - [ ] **How this was measured** appears *above* the numbers: benchmark v1 · 10 queries ·
       k=5, embedding provider `local` / `hashed-ngrams-1024`, vectors indexed, AI not
       consulted.
@@ -486,6 +486,55 @@ Both servers running, sample data imported, vectors indexed.
       problems were not checked.
 - [ ] With a key: the report gains a **Model-generated findings** section with a blue
       banner, and deterministic findings remain in their own section.
+
+---
+
+# Manual checklist — End-to-end pass (Phase 10)
+
+Run this against an empty database, not the one you have been developing on: the point
+is the first five minutes, not the state you are used to.
+
+```bash
+mv backend/devmemory.db backend/devmemory.db.bak   # or point DEVMEMORY_DB_PATH at a fresh file
+```
+
+### Empty start
+
+- [ ] **Memories**: `No memories yet`, every stat zero, import panel ready.
+- [ ] **Health** → *Run health check* → says `Nothing to check yet`, not
+      `No problems found`.
+- [ ] **Benchmark**: says there are no memories to score and disables all three run
+      buttons. No table of zeros.
+- [ ] **Report**: still builds, says `0 memories`, and recommends importing
+      `data/sample_memories.json`.
+
+### Import and lifecycle
+
+- [ ] Paste `data/sample_memories.json` and import → `Imported 19 memories`;
+      stats read 19 / 3 projects.
+- [ ] Search `redis` narrows the list; clearing it restores all 19.
+- [ ] Filter to `payments-api`, then switch straight to `analytics` — the other
+      projects stay in the picker.
+- [ ] **New memory** → the memory appears with the updated totals.
+- [ ] **Edit** it → the detail shows the new content. **Delete** → confirmation, then
+      `Memory deleted`.
+
+### Measure
+
+- [ ] **Retrieval** → *Use the example* → each match has a one-line explanation, and the
+      surface-form caveat appears once above the list.
+- [ ] **Index memories** → 19 indexed; the semantic strategy returns ranked results.
+- [ ] **Benchmark** → compare shows keyword and semantic side by side; the missed column
+      is labelled `Missed (kw)`.
+- [ ] **Report** → numbers agree with the other tabs; *Export JSON* downloads
+      `devmemory-report.json`.
+
+### Narrow screen
+
+- [ ] At 390 px nothing scrolls sideways.
+- [ ] Tapping a memory scrolls its detail into view instead of leaving the user at the
+      list.
+- [ ] The tab strip scrolls to reach **Report**.
 
 ---
 

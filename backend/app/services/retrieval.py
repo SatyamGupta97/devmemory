@@ -240,16 +240,11 @@ def retrieve_semantic(
                 method=SEMANTIC_STRATEGY,
                 score=round(similarity, 4),
                 matched_terms=[],
+                # The provider's meaning/surface-form caveat is stated once in
+                # the result notes; repeating it on every match buried the scores.
                 explanation=(
                     f"Cosine similarity {similarity:.4f} against the query vector, "
                     f"produced by provider '{provider}' ({model})."
-                    + (
-                        " The provider compares surface form only, so this reflects "
-                        "shared words and stems rather than meaning."
-                        if not captures_meaning
-                        else " The provider compares meaning, so shared wording is "
-                        "not required."
-                    )
                 ),
             )
         )

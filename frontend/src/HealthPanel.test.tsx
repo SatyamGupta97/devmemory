@@ -239,6 +239,24 @@ describe("health check", () => {
     expect(within(panel).getByText(/No problems found/)).toBeInTheDocument();
   });
 
+  it("does not call an empty collection clean", async () => {
+    mockApi({
+      "GET /api/memories": () => json([]),
+      "GET /api/health": () =>
+        json(report({ findings: [], summary: {}, total_memories: 0, projects: [] })),
+    });
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText(/No memories yet/);
+    await user.click(screen.getByRole("tab", { name: "Health" }));
+    await user.click(screen.getByRole("button", { name: "Run health check" }));
+
+    const panel = await screen.findByRole("region", { name: "Memory health check" });
+    expect(within(panel).getByText(/Nothing to check yet/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/No problems found/)).not.toBeInTheDocument();
+  });
+
   it("shows an error when the health check cannot run", async () => {
     mockApi({
       "GET /api/memories": () => json([memory()]),

@@ -91,7 +91,6 @@ export function HealthPanel({ report, onSelectMemory, projectFilter }: Props) {
   return (
     <section className="health" aria-label="Memory health check">
       <div className="health-head">
-        <h2 className="form-heading">Memory health check</h2>
         <span className="health-analyzer">
           Analyzer: <code>{report.analyzer}</code> — no language model was used.
         </span>
@@ -105,8 +104,9 @@ export function HealthPanel({ report, onSelectMemory, projectFilter }: Props) {
 
       {report.findings.length === 0 ? (
         <p className="placeholder">
-          No problems found. Either the collection is clean, or the rules below do
-          not cover what is wrong with it.
+          {report.total_memories === 0
+            ? "Nothing to check yet. Import memories and run this again."
+            : "No problems found. Either the collection is clean, or the rules below do not cover what is wrong with it."}
         </p>
       ) : (
         <>

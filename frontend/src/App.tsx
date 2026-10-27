@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_BASE_URL,
   createMemory,
@@ -48,6 +48,10 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function App() {
   const [memories, setMemories] = useState<Memory[]>([]);
+  // Filtering happens server-side, so a filtered response only contains that
+  // project. Keeping the union stops the project picker from collapsing to the
+  // current choice and trapping the user.
+  const [knownProjects, setKnownProjects] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -75,6 +79,11 @@ export default function App() {
         category: categoryFilter || undefined,
       });
       setMemories(data);
+      setKnownProjects((current) =>
+        projectFilter || categoryFilter
+          ? [...new Set([...current, ...data.map((item) => item.project)])].sort()
+          : [...new Set(data.map((item) => item.project))].sort(),
+      );
     } catch (error) {
       setMemories([]);
       setLoadError(describeError(error));
@@ -87,10 +96,16 @@ export default function App() {
     void load();
   }, [load]);
 
-  const projects = useMemo(
-    () => [...new Set(memories.map((memory) => memory.project))].sort(),
-    [memories],
-  );
+  // On a narrow screen the detail panel sits below the whole list, so selecting
+  // a memory (or opening one from Health/Retrieval) would otherwise leave the
+  // user staring at the list.
+  const detailRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!selectedId || tab !== "memories") return;
+    if (typeof window.matchMedia !== "function") return;
+    if (!window.matchMedia("(max-width: 900px)").matches) return;
+    detailRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [selectedId, tab]);
 
   const visibleMemories = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -251,7 +266,7 @@ export default function App() {
               onChange={(event) => setProjectFilter(event.target.value)}
             >
               <option value="">All projects</option>
-              {projects.map((project) => (
+              {knownProjects.map((project) => (
                 <option key={project} value={project}>
                   {project}
                 </option>
@@ -332,7 +347,7 @@ export default function App() {
               )}
             </section>
 
-            <section className="panel" aria-label="Detail panel">
+            <section className="panel" aria-label="Detail panel" ref={detailRef}>
               {mode === "edit" && selected ? (
                 <MemoryForm
                   initial={selected}
@@ -406,7 +421,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === "benchmark" && <BenchmarkPanel />}
+      {tab === "benchmark" && <BenchmarkPanel memoryCount={memories.length} />}
 
       {tab === "report" && (
         <ReportPanel projectFilter={projectFilter} onSelectMemory={openMemory} />

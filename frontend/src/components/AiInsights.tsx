@@ -76,8 +76,7 @@ export function AiInsights({ projectFilter }: Props) {
 
       {status && !status.available && (
         <p className="hint">
-          Not configured{status.reason ? `: ${status.reason}` : "."} The
-          deterministic checks above work without it.
+          Not configured{status.reason ? `: ${status.reason}` : "."}
         </p>
       )}
 

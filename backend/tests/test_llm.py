@@ -142,7 +142,11 @@ def test_not_configured_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("DEVMEMORY_LLM_MODEL", raising=False)
 
     assert is_configured() is False
-    assert "not configured" in unavailable_reason()
+    # The reason is shown after "Not configured:" in the UI, so it leads with the
+    # fix rather than repeating the diagnosis.
+    reason = unavailable_reason()
+    assert "DEVMEMORY_LLM_API_KEY" in reason
+    assert "DEVMEMORY_LLM_MODEL" in reason
 
 
 def test_the_reason_names_the_missing_variable(

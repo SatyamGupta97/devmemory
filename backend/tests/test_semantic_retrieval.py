@@ -159,7 +159,9 @@ def test_semantic_explanation_says_which_provider_produced_the_score() -> None:
 
     explanation = result.matches[0].explanation
     assert "local" in explanation
-    assert "surface form" in explanation
+    assert provider.model in explanation
+    # The caveat belongs to the ranking, not to all ten match rows.
+    assert any("surface form" in note for note in result.notes)
 
 
 # --- embedding API ----------------------------------------------------------
