@@ -17,11 +17,13 @@ from __future__ import annotations
 
 import math
 
-from app.config import bm25_b, bm25_k1
+from app.config import bm25_b, bm25_k1, semantic_min_similarity
 from app.schemas import MatchedTerm, Memory, RetrievalMatch, RetrievalResult
+from app.services.embeddings import cosine_similarity
 from app.services.text import tokens
 
 STRATEGY = "keyword-bm25"
+SEMANTIC_STRATEGY = "semantic-embedding"
 
 NOTES = [
     "Keyword matching only: a memory that means the same thing in different words "
@@ -139,6 +141,7 @@ def retrieve(
         matches.append(
             RetrievalMatch(
                 memory=memory,
+                method=STRATEGY,
                 score=score,
                 matched_terms=contributions,
                 explanation=_explain(query_terms, contributions, len(query_terms)),
@@ -162,4 +165,115 @@ def retrieve(
         # instead of silently returning a short list.
         unmatched_query_terms=[term for term in query_terms if term not in matched_anywhere],
         notes=NOTES,
+    )
+
+# --- semantic retrieval -----------------------------------------------------
+
+
+def semantic_notes(captures_meaning: bool, provider: str, model: str) -> list[str]:
+    """What a similarity score does and does not mean, stated per provider."""
+    notes = [
+        "Similarity is cosine distance between vectors. It measures how alike two "
+        "texts look to the embedding model, not whether the memory is correct.",
+        "Scores are comparable within one query and one provider only.",
+        "Superseded memories are included and labelled.",
+    ]
+
+    if captures_meaning:
+        notes.insert(
+            0,
+            f"Ranked by a hosted embedding model ('{model}'), which compares meaning "
+            "rather than words.",
+        )
+    else:
+        notes.insert(
+            0,
+            f"Ranked by the local provider ('{model}'), which compares surface form: "
+            "shared words, shared stems and typos. It does NOT understand meaning, "
+            "so a paraphrase with no shared words still scores near zero. Configure "
+            "a hosted model to get true semantic retrieval.",
+        )
+
+    return notes
+
+
+def retrieve_semantic(
+    memories: list[Memory],
+    query: str,
+    vectors: dict[str, list[float]],
+    query_vector: list[float],
+    limit: int | None = None,
+    project: str | None = None,
+    provider: str = "local",
+    model: str = "",
+    captures_meaning: bool = False,
+) -> RetrievalResult:
+    """Rank memories by vector similarity.
+
+    ``vectors`` holds only the memories that have a stored vector. A memory
+    without one is not silently scored zero and shown at the bottom — it is
+    excluded from the candidate pool, and the result says how many were skipped.
+    """
+    matches: list[RetrievalMatch] = []
+    missing = 0
+    floor = semantic_min_similarity()
+
+    for memory in memories:
+        vector = vectors.get(memory.id)
+        if vector is None:
+            missing += 1
+            continue
+
+        similarity = cosine_similarity(query_vector, vector)
+        if similarity < floor:
+            # Below the floor is noise, not a weak match. Hashing collisions
+            # guarantee a little non-zero similarity between unrelated texts, and
+            # returning those would undermine every result that follows.
+            continue
+
+        matches.append(
+            RetrievalMatch(
+                memory=memory,
+                method=SEMANTIC_STRATEGY,
+                score=round(similarity, 4),
+                matched_terms=[],
+                explanation=(
+                    f"Cosine similarity {similarity:.4f} against the query vector, "
+                    f"produced by provider '{provider}' ({model})."
+                    + (
+                        " The provider compares surface form only, so this reflects "
+                        "shared words and stems rather than meaning."
+                        if not captures_meaning
+                        else " The provider compares meaning, so shared wording is "
+                        "not required."
+                    )
+                ),
+            )
+        )
+
+    matches.sort(key=lambda match: (-match.score, match.memory.id))
+
+    if limit is not None:
+        matches = matches[:limit]
+
+    notes = semantic_notes(captures_meaning, provider, model)
+    notes.append(
+        f"Similarity below {floor:.2f} is treated as no match; hashing can produce "
+        "small non-zero scores between unrelated texts."
+    )
+    if missing:
+        notes.append(
+            f"{missing} memory/memories in scope have no stored vector and were "
+            "excluded. Run the indexer to include them."
+        )
+
+    return RetrievalResult(
+        query=query,
+        strategy=SEMANTIC_STRATEGY,
+        project=project,
+        considered=len(memories) - missing,
+        returned=len(matches),
+        matches=matches,
+        unmatched_query_terms=[],
+        notes=notes,
     )

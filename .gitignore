@@ -12,8 +12,10 @@ venv/
 .env.*
 !.env.example
 
-# Databases
+# Databases (including SQLite write-ahead log sidecar files)
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 

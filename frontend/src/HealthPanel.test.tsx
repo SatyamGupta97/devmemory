@@ -63,12 +63,26 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+const DEFAULT_STATUS = {
+  provider: "local",
+  model: "hashed-ngrams-1024",
+  dimensions: 1024,
+  captures_meaning: false,
+  description: "Surface form only.",
+  total_memories: 1,
+  indexed_memories: 1,
+  stale_memories: 0,
+};
+
 function mockApi(handlers: Record<string, () => Response>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     const key = `${method} ${new URL(String(input)).pathname}`;
     const handler = handlers[key];
     if (!handler) {
+      if (key === "GET /api/embeddings/status") {
+        return json(DEFAULT_STATUS);
+      }
       throw new Error(`Unhandled request in test: ${key}`);
     }
     return handler();

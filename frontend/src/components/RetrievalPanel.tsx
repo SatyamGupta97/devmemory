@@ -1,6 +1,11 @@
-import { useState } from "react";
-import { describeError, retrieveMemories } from "../api/client";
-import type { RetrievalResult } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import {
+  describeError,
+  getEmbeddingStatus,
+  indexEmbeddings,
+  retrieveMemories,
+} from "../api/client";
+import type { EmbeddingStatus, RetrievalResult, RetrievalStrategy } from "../types";
 
 interface Props {
   /** The project filter currently applied to the memory list. */
@@ -12,11 +17,33 @@ const EXAMPLE_QUERY = "Add caching to the user service.";
 
 export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
   const [query, setQuery] = useState("");
+  const [strategy, setStrategy] = useState<RetrievalStrategy>("keyword");
   const [result, setResult] = useState<RetrievalResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const run = async (task: string) => {
+  const [status, setStatus] = useState<EmbeddingStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [indexing, setIndexing] = useState(false);
+  const [indexNotice, setIndexNotice] = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      setStatus(await getEmbeddingStatus());
+      setStatusError(null);
+    } catch (caught) {
+      // The status is supporting information: if it cannot be fetched, retrieval
+      // still works and the panel simply does not claim to know the index state.
+      setStatus(null);
+      setStatusError(describeError(caught));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const run = async (task: string, mode: RetrievalStrategy) => {
     setLoading(true);
     setError(null);
     try {
@@ -24,6 +51,7 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
         await retrieveMemories({
           query: task,
           project: projectFilter || undefined,
+          strategy: mode,
         }),
       );
     } catch (caught) {
@@ -34,19 +62,43 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
     }
   };
 
+  const buildIndex = async (force: boolean) => {
+    setIndexing(true);
+    setIndexNotice(null);
+    setError(null);
+    try {
+      const outcome = await indexEmbeddings({
+        project: projectFilter || undefined,
+        force,
+      });
+      setIndexNotice(
+        outcome.failed > 0
+          ? `Indexing failed: ${outcome.errors[0] ?? "unknown error"}`
+          : `Indexed ${outcome.indexed}, skipped ${outcome.skipped} already current.`,
+      );
+      await loadStatus();
+    } catch (caught) {
+      setError(describeError(caught));
+    } finally {
+      setIndexing(false);
+    }
+  };
+
+  const needsIndexing = status !== null && status.stale_memories > 0;
+
   return (
     <section className="retrieval" aria-label="Retrieval playground">
       <h2 className="form-heading">Retrieval playground</h2>
       <p className="hint">
-        Describe a coding task. Memories are ranked by keyword relevance, and every
-        score shows which terms produced it.
+        Describe a coding task. Memories are ranked by the chosen strategy, and
+        every result says which one produced it.
       </p>
 
       <form
         className="retrieval-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (query.trim()) void run(query);
+          if (query.trim()) void run(query, strategy);
         }}
       >
         <label htmlFor="retrieval-query">Coding task</label>
@@ -57,6 +109,17 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
           placeholder={EXAMPLE_QUERY}
           onChange={(event) => setQuery(event.target.value)}
         />
+
+        <label htmlFor="retrieval-strategy">Strategy</label>
+        <select
+          id="retrieval-strategy"
+          value={strategy}
+          onChange={(event) => setStrategy(event.target.value as RetrievalStrategy)}
+        >
+          <option value="keyword">Keyword (BM25) — matches words</option>
+          <option value="semantic">Semantic — matches vectors</option>
+        </select>
+
         <div className="form-actions">
           <button
             type="submit"
@@ -71,13 +134,70 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
             disabled={loading}
             onClick={() => {
               setQuery(EXAMPLE_QUERY);
-              void run(EXAMPLE_QUERY);
+              void run(EXAMPLE_QUERY, strategy);
             }}
           >
             Use the example
           </button>
         </div>
       </form>
+
+      <div className="embedding-box">
+        <h3 className="embedding-heading">Embedding index</h3>
+
+        {statusError && (
+          <p className="hint">
+            Index status unavailable: {statusError}. Retrieval still works.
+          </p>
+        )}
+
+        {status && (
+          <>
+            <p className="hint">
+              Provider <code>{status.provider}</code> · model{" "}
+              <code>{status.model}</code> · {status.dimensions} dimensions ·{" "}
+              {status.indexed_memories} of {status.total_memories} memories indexed
+              {status.stale_memories > 0 && (
+                <> · <strong>{status.stale_memories} need indexing</strong></>
+              )}
+            </p>
+
+            {!status.captures_meaning && (
+              <p className="embedding-warning">
+                This provider compares surface form, not meaning. A paraphrase with
+                no shared words still scores zero. Set an embedding API key and
+                model to switch to a hosted model.
+              </p>
+            )}
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="button"
+                disabled={indexing}
+                onClick={() => void buildIndex(false)}
+              >
+                {indexing ? "Indexing…" : "Index memories"}
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={indexing}
+                onClick={() => void buildIndex(true)}
+              >
+                Re-index everything
+              </button>
+            </div>
+
+            {indexNotice && <p className="hint">{indexNotice}</p>}
+            {needsIndexing && (
+              <p className="hint">
+                Semantic retrieval will exclude memories without a current vector.
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       {error && (
         <p className="field-error" role="alert">
@@ -89,14 +209,13 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
         <div className="retrieval-result">
           <p className="hint">
             <strong>{result.returned}</strong> of {result.considered} memories
-            returned for “{result.query}” using{" "}
-            <code>{result.strategy}</code>
+            returned for “{result.query}” using <code>{result.strategy}</code>
             {result.project ? ` in ${result.project}` : " across all projects"}.
           </p>
 
           {result.matches.length === 0 ? (
             <div className="placeholder">
-              <p>No memory shares a word with this task.</p>
+              <p>No memory is close enough to this task.</p>
               {result.unmatched_query_terms.length > 0 && (
                 <p className="hint">
                   These query terms matched nothing:{" "}
@@ -115,6 +234,7 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
                     <span className="match-score">
                       score {match.score.toFixed(3)}
                     </span>
+                    <span className="badge badge-fact">{match.method}</span>
                     <span className="memory-card-project">
                       {match.memory.project}
                     </span>
@@ -129,16 +249,18 @@ export function RetrievalPanel({ projectFilter, onSelectMemory }: Props) {
                   <p className="match-content">{match.memory.content}</p>
                   <p className="match-explanation">{match.explanation}</p>
 
-                  <div className="match-terms">
-                    {match.matched_terms.map((term) => (
-                      <span className="term-chip" key={term.term}>
-                        {term.term}
-                        <span className="term-detail">
-                          x{term.term_frequency} · {term.contribution.toFixed(2)}
+                  {match.matched_terms.length > 0 && (
+                    <div className="match-terms">
+                      {match.matched_terms.map((term) => (
+                        <span className="term-chip" key={term.term}>
+                          {term.term}
+                          <span className="term-detail">
+                            x{term.term_frequency} · {term.contribution.toFixed(2)}
+                          </span>
                         </span>
-                      </span>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
 
                   <button
                     type="button"

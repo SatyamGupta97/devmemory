@@ -736,3 +736,31 @@ button:focus-visible {
   font-weight: 400;
   color: var(--muted);
 }
+
+/* --- embedding index ----------------------------------------------------- */
+
+.embedding-box {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fafafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.embedding-heading {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.embedding-warning {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #8a5300;
+  background: #fdf3d6;
+  border-radius: 6px;
+  padding: 8px 10px;
+}

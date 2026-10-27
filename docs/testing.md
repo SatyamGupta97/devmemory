@@ -266,6 +266,66 @@ With `data/sample_memories.json` loaded, the summary should show roughly:
 
 ---
 
+# Manual checklist — Embeddings and Semantic Retrieval (Phase 6)
+
+Automated tests cover the provider abstraction, vector storage and the API. These steps
+confirm the honest labelling is visible to a *user* — that nobody can mistake the local
+provider for a semantic model.
+
+Both servers running, `data/sample_memories.json` imported.
+
+### Index state
+
+- [ ] In the retrieval playground, the **Embedding index** box shows
+      `Provider local · model hashed-ngrams-1024 · 1024 dimensions`.
+- [ ] It reads `0 of 19 memories indexed` and `19 need indexing`.
+- [ ] A yellow warning reads *"This provider compares surface form, not meaning."*
+      This wording is the point of the phase — do not let it be buried.
+- [ ] The button offers both **Index memories** and **Re-index everything**.
+
+### Build the index
+
+- [ ] Click **Index memories** → `Indexed 19, skipped 0 already current.`
+- [ ] The coverage line updates to `19 of 19 memories indexed`.
+- [ ] The "need indexing" warning disappears.
+- [ ] Click **Index memories** again → `Indexed 0, skipped 19 already current.`
+      Incremental indexing works.
+- [ ] Edit a memory, then re-open the panel (or click Index again) → exactly
+      `1 need indexing`.
+
+### Compare the strategies
+
+- [ ] Set strategy to **Keyword (BM25)**, enter `Add caching to the user service.`,
+      click **Retrieve**. Note the rank of the Redis-caching memory.
+- [ ] Switch to **Semantic**, retrieve again.
+- [ ] Each result shows its **method** badge (`keyword-bm25` or
+      `semantic-embedding`), so you can tell which run produced it.
+- [ ] **Expected and honest:** the two lists are the same memories in the same
+      order. The local provider does not beat BM25 on this dataset. If a demo
+      implies otherwise, it is wrong.
+
+### Semantic without an index
+
+- [ ] Delete `backend/devmemory.db`, restart the backend, re-import the sample data,
+      and retrieve with strategy **Semantic** before indexing.
+- [ ] A red error explains that no embeddings are indexed and names
+      `POST /api/embeddings/index` — it must **not** look like "nothing matched".
+
+### With a hosted model (optional)
+
+Only if you have a key. This is the step that proves semantic retrieval works.
+
+- [ ] `export DEVMEMORY_EMBEDDING_API_KEY=... DEVMEMORY_EMBEDDING_MODEL=text-embedding-3-small`
+- [ ] Restart the backend → the panel shows `Provider hosted` and **no** warning.
+- [ ] Click **Re-index everything** → the index is rebuilt for the new provider.
+- [ ] Retrieve on **Semantic** → the Redis-caching memory should climb above the
+      database decisions, and the explanation should say the provider compares meaning.
+
+If that does not happen, the ranking failure is real and the benchmark (Phase 7) will
+measure it rather than hide it.
+
+---
+
 ## How to report a failure
 
 Please include:

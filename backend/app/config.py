@@ -125,3 +125,62 @@ def bm25_b() -> float:
 
 def default_result_limit() -> int:
     return _int_env("DEVMEMORY_RETRIEVAL_LIMIT", 10)
+
+
+# --- embeddings -------------------------------------------------------------
+#
+# Provider selection is explicit rather than guessed: "auto" uses a hosted model
+# only when a key and model are configured, and otherwise falls back to the
+# local provider. Nothing here makes a network call at import time.
+
+def embedding_provider_name() -> str:
+    """Which provider to use: ``auto``, ``local`` or ``hosted``."""
+    return os.environ.get("DEVMEMORY_EMBEDDING_PROVIDER", "auto").strip().lower()
+
+
+def embedding_api_key() -> str:
+    return os.environ.get("DEVMEMORY_EMBEDDING_API_KEY", "").strip()
+
+
+def embedding_model() -> str:
+    return os.environ.get("DEVMEMORY_EMBEDDING_MODEL", "").strip()
+
+
+def embedding_base_url() -> str:
+    return os.environ.get(
+        "DEVMEMORY_EMBEDDING_BASE_URL", "https://api.openai.com/v1"
+    ).strip().rstrip("/")
+
+
+def local_embedding_dimensions() -> int:
+    """Width of the local hashed vector.
+
+    1024 rather than the conventional 256 because measurement showed 256 caused
+    hash collisions: unrelated memories landed in the same buckets and scored
+    ~0.20 similarity, manufacturing matches that did not exist. At 1024 an
+    unrelated pair scores 0.0. A false match is worse than a missed one in a
+    tool whose entire value is trustworthiness.
+    """
+    return _int_env("DEVMEMORY_EMBEDDING_DIMENSIONS", 1024)
+
+
+def embedding_timeout_seconds() -> float:
+    return _float_env("DEVMEMORY_EMBEDDING_TIMEOUT", 20.0)
+
+
+def embedding_batch_size() -> int:
+    """How many texts to send per hosted request."""
+    return _int_env("DEVMEMORY_EMBEDDING_BATCH_SIZE", 32)
+
+
+def semantic_min_similarity() -> float:
+    """Below this cosine similarity, a memory is treated as no match at all.
+
+    Hashing can never fully eliminate bucket collisions, so unrelated texts can
+    score a few hundredths above zero. Measured: at 1024 dimensions one such
+    collision produced 0.024 between a query about Redis and a memory about card
+    numbers. Genuine matches in this collection score above 0.3, so a floor
+    separates noise from signal. Raising it trades recall for precision, which is
+    the right direction for a tool whose findings must be trustworthy.
+    """
+    return _float_env("DEVMEMORY_SEMANTIC_MIN_SIMILARITY", 0.10)

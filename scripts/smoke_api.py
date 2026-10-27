@@ -312,6 +312,60 @@ def main() -> int:
     results.check("health check wrote nothing", len(before), len(after_health),
                   len(before) == len(after_health))
 
+    print("\n20. Embedding provider status")
+    status, body = call(base, "GET", "/api/embeddings/status")
+    results.check("GET /api/embeddings/status", 200, status, status == 200)
+    provider = body.get("provider") if isinstance(body, dict) else None
+    results.check("names the active provider", True, provider, bool(provider))
+    results.check("states whether it captures meaning", True,
+                  body.get("captures_meaning") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and "captures_meaning" in body)
+    results.check("describes what it can do", True,
+                  bool(body.get("description")) if isinstance(body, dict) else False,
+                  isinstance(body, dict) and bool(body.get("description")))
+
+    print("\n21. Build the vector index")
+    # Derive the expected count from the API rather than hardcoding it: earlier
+    # steps delete a memory, so a literal number here would rot.
+    _, current = call(base, "GET", f"/api/memories?project={project}")
+    expected_indexed = len(current)
+    status, body = call(base, "POST", "/api/embeddings/index",
+                        {"project": project})
+    results.check("POST /api/embeddings/index", 200, status, status == 200)
+    results.check("indexed the batch", expected_indexed,
+                  body.get("indexed") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and body.get("indexed") == expected_indexed)
+    status, body = call(base, "POST", "/api/embeddings/index", {"project": project})
+    results.check("second run is incremental", 0,
+                  body.get("indexed") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and body.get("indexed") == 0)
+
+    print("\n22. Semantic retrieval")
+    status, body = call(base, "POST", "/api/retrieve",
+                        {"query": "redis caching", "project": project,
+                         "strategy": "semantic"})
+    results.check("POST /api/retrieve strategy=semantic", 200, status, status == 200)
+    results.check("reports the semantic strategy", "semantic-embedding",
+                  body.get("strategy") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and body.get("strategy") == "semantic-embedding")
+    matches = body.get("matches", []) if isinstance(body, dict) else []
+    results.check("returned at least one match", True, len(matches), len(matches) >= 1)
+    if matches:
+        results.check("each match names its method", "semantic-embedding",
+                      matches[0].get("method"),
+                      matches[0].get("method") == "semantic-embedding")
+    notes = " ".join(body.get("notes", [])) if isinstance(body, dict) else ""
+    results.check("states that similarity is not correctness", True,
+                  "not whether the memory is correct" in notes,
+                  "not whether the memory is correct" in notes)
+
+    print("\n23. Semantic retrieval needs an index")
+    empty_project = f"unindexed-{uuid4().hex[:8]}"
+    status, _ = call(base, "POST", "/api/retrieve",
+                     {"query": "anything", "project": empty_project,
+                      "strategy": "semantic"})
+    results.check("unindexed scope -> 409 with advice", 409, status, status == 409)
+
     return results.summary()
 
 

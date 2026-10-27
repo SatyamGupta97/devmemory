@@ -20,6 +20,12 @@ from app.main import app
 def isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "devmemory.db"
     monkeypatch.setenv("DEVMEMORY_DB_PATH", str(path))
+    # Force the local embedding provider so tests are hermetic: they must never
+    # depend on a developer having a real API key in their environment, and must
+    # never make a network call.
+    monkeypatch.setenv("DEVMEMORY_EMBEDDING_PROVIDER", "local")
+    monkeypatch.delenv("DEVMEMORY_EMBEDDING_API_KEY", raising=False)
+    monkeypatch.delenv("DEVMEMORY_EMBEDDING_MODEL", raising=False)
     return path
 
 

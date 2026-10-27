@@ -30,6 +30,17 @@ function json(body: unknown, status = 200): Response {
 type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>;
 
 /** Route requests by "METHOD /path" so each test states only what it needs. */
+const DEFAULT_STATUS = {
+  provider: "local",
+  model: "hashed-ngrams-1024",
+  dimensions: 1024,
+  captures_meaning: false,
+  description: "Surface form only.",
+  total_memories: 1,
+  indexed_memories: 1,
+  stale_memories: 0,
+};
+
 function mockApi(handlers: Record<string, Handler>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -38,6 +49,11 @@ function mockApi(handlers: Record<string, Handler>) {
     const key = `${method} ${path}`;
     const handler = handlers[key];
     if (!handler) {
+      // The retrieval panel loads index status on mount; unrelated tests do not
+      // care about it, so answer with a default.
+      if (key === "GET /api/embeddings/status") {
+        return json(DEFAULT_STATUS);
+      }
       throw new Error(`Unhandled request in test: ${key}`);
     }
     return handler(url, init);
@@ -139,8 +155,11 @@ describe("stats and list", () => {
 
     expect(screen.queryByText(/uses PostgreSQL/)).not.toBeInTheDocument();
     expect(screen.getByText(/disabled Redis caching/)).toBeInTheDocument();
-    // One initial load, no extra fetch per keystroke.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // One initial load of the list, no extra fetch per keystroke.
+    const listCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/api/memories"),
+    );
+    expect(listCalls).toHaveLength(1);
   });
 
   it("sends the project filter to the server", async () => {
@@ -373,7 +392,11 @@ describe("import", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Invalid JSON");
-    expect(fetchMock).toHaveBeenCalledTimes(1); // only the initial load
+    // Only the initial list load; the import never reached the network.
+    const listCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes("/api/memories"),
+    );
+    expect(listCalls).toHaveLength(1);
   });
 
   it("rejects a JSON object that is not a memory array", async () => {

@@ -5,13 +5,16 @@
  */
 
 import type {
+  EmbeddingStatus,
   HealthReport,
+  IndexResult,
   ImportResult,
   Memory,
   MemoryCategory,
   MemoryCreateInput,
   MemoryUpdateInput,
   RetrievalResult,
+  RetrievalStrategy,
 } from "../types";
 
 export const API_BASE_URL =
@@ -161,8 +164,23 @@ export async function retrieveMemories(input: {
   query: string;
   project?: string;
   limit?: number;
+  strategy?: RetrievalStrategy;
 }): Promise<RetrievalResult> {
   return request<RetrievalResult>("/api/retrieve", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getEmbeddingStatus(): Promise<EmbeddingStatus> {
+  return request<EmbeddingStatus>("/api/embeddings/status");
+}
+
+export async function indexEmbeddings(input: {
+  project?: string;
+  force?: boolean;
+}): Promise<IndexResult> {
+  return request<IndexResult>("/api/embeddings/index", {
     method: "POST",
     body: JSON.stringify(input),
   });

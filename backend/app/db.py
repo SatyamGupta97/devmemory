@@ -13,7 +13,7 @@ from pathlib import Path
 
 from app.config import get_db_path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
@@ -38,6 +38,29 @@ CREATE INDEX IF NOT EXISTS idx_memories_project
 
 CREATE INDEX IF NOT EXISTS idx_memories_created_at
     ON memories (created_at);
+
+-- Vectors live in their own table, keyed by (memory, provider, model).
+--
+-- Why not a column on `memories`: comparing strategies in the benchmark needs
+-- several embeddings of the same memory side by side, and re-indexing with a new
+-- model must not overwrite the old vectors or touch the memory row.
+--
+-- `content_hash` is what makes a vector trustworthy: it records the content the
+-- vector was built from, so an edited memory's stale vector can be detected and
+-- recomputed instead of silently returning wrong neighbours.
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+    memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    provider     TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    dimensions   INTEGER NOT NULL,
+    vector       TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    embedded_at  TEXT NOT NULL,
+    PRIMARY KEY (memory_id, provider, model)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_provider_model
+    ON memory_embeddings (provider, model);
 """
 
 

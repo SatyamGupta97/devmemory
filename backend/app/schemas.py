@@ -202,10 +202,22 @@ class HealthReport(BaseModel):
 # --- retrieval --------------------------------------------------------------
 
 
+class RetrievalStrategy(str, Enum):
+    """How memories are ranked.
+
+    Named rather than implicit so every result states which method produced it.
+    Comparing two methods is only meaningful if you know which one ran.
+    """
+
+    KEYWORD = "keyword"
+    SEMANTIC = "semantic"
+
+
 class RetrievalRequest(BaseModel):
     """A coding task to look memories up for."""
 
     query: str = Field(min_length=1, max_length=500)
+    strategy: RetrievalStrategy = RetrievalStrategy.KEYWORD
     project: str | None = Field(
         default=None,
         max_length=100,
@@ -232,6 +244,7 @@ class MatchedTerm(BaseModel):
 
 class RetrievalMatch(BaseModel):
     memory: Memory
+    method: str
     score: float
     matched_terms: list[MatchedTerm]
     explanation: str
@@ -246,3 +259,41 @@ class RetrievalResult(BaseModel):
     matches: list[RetrievalMatch]
     unmatched_query_terms: list[str]
     notes: list[str]
+
+
+# --- embeddings -------------------------------------------------------------
+
+
+class IndexRequest(BaseModel):
+    """Build vectors for the memories in scope."""
+
+    project: str | None = Field(default=None, max_length=100)
+    force: bool = Field(
+        default=False,
+        description="Re-embed everything, even memories whose vector is current.",
+    )
+
+
+class IndexResult(BaseModel):
+    provider: str
+    model: str
+    dimensions: int
+    captures_meaning: bool
+    total: int
+    indexed: int
+    skipped: int
+    failed: int
+    errors: list[str]
+
+
+class EmbeddingStatus(BaseModel):
+    """What the current provider can do, and how much of the collection is indexed."""
+
+    provider: str
+    model: str
+    dimensions: int
+    captures_meaning: bool
+    description: str
+    total_memories: int
+    indexed_memories: int
+    stale_memories: int

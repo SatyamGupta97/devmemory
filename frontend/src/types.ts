@@ -105,6 +105,8 @@ export interface MatchedTerm {
 
 export interface RetrievalMatch {
   memory: Memory;
+  /** Which strategy produced this match. */
+  method: string;
   score: number;
   matched_terms: MatchedTerm[];
   explanation: string;
@@ -119,4 +121,31 @@ export interface RetrievalResult {
   matches: RetrievalMatch[];
   unmatched_query_terms: string[];
   notes: string[];
+}
+
+/** Embedding index types. */
+
+export type RetrievalStrategy = "keyword" | "semantic";
+
+export interface EmbeddingStatus {
+  provider: string;
+  model: string;
+  dimensions: number;
+  captures_meaning: boolean;
+  description: string;
+  total_memories: number;
+  indexed_memories: number;
+  stale_memories: number;
+}
+
+export interface IndexResult {
+  provider: string;
+  model: string;
+  dimensions: number;
+  captures_meaning: boolean;
+  total: number;
+  indexed: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
 }

@@ -15,8 +15,10 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 5 complete: a keyword retrieval baseline ranks memories against a coding task and
-explains every point of every score. A deterministic health check inspects the
+Phase 6 complete: retrieval can run on keyword (BM25) or on memory vectors, behind a
+provider abstraction that works with no model access and upgrades to a hosted embedding
+model with two environment variables. Phase 5's keyword baseline remains, and every
+result states which strategy produced it. A deterministic health check inspects the
 collection for duplicates, contradictions, stale entries and weak metadata. A React UI
 covers the full memory lifecycle, the health check, and a retrieval playground.
 
@@ -33,7 +35,10 @@ devmemory/
       api/            HTTP routers
       services/       Business logic
         health.py       deterministic health analysis
-        retrieval.py    BM25 keyword ranking
+        retrieval.py    BM25 keyword ranking + vector ranking
+        embeddings.py   provider abstraction, cosine similarity
+        embedding_store.py  vector persistence
+        indexing.py     incremental index building
         text.py         normalisation and similarity
     tests/            pytest suite
     requirements.txt
@@ -174,6 +179,8 @@ CORS is not authentication: it constrains browsers, not other clients.
 | `DELETE` | `/api/memories/{id}` | Delete (`204`), `404` if absent, `409` if referenced |
 | `GET` | `/api/health` | Run the health check and return the findings |
 | `POST` | `/api/retrieve` | Rank memories for a coding task, with reasons |
+| `GET` | `/api/embeddings/status` | Active embedding provider and index coverage |
+| `POST` | `/api/embeddings/index` | Build or refresh memory vectors |
 
 `GET /api/memories` accepts `project` and `category` query filters. Unknown values
 return an empty list for `project`; an invalid `category` returns `422`.
@@ -327,6 +334,9 @@ Retrieval:
 | `DEVMEMORY_RETRIEVAL_B` | `0.75` | BM25 length-normalisation parameter |
 | `DEVMEMORY_RETRIEVAL_LIMIT` | `10` | Default number of results |
 
+Embedding variables are documented under
+[Embeddings and semantic retrieval](#embeddings-and-semantic-retrieval).
+
 ### Memory timestamps
 
 `POST /api/memories` and the import endpoint accept an optional `created_at`. Real
@@ -416,6 +426,126 @@ benchmark. Tuning BM25 until the demo looked right would have destroyed both.
   valid answer.
 - **Nothing is written.** Retrieval is a read, and a test asserts the collection is
   unchanged afterwards.
+
+## Embeddings and semantic retrieval
+
+Retrieval has two strategies, and the response always names the one that ran:
+
+```bash
+# shopping list of what happened
+curl -X POST http://127.0.0.1:8000/api/embeddings/index -H 'Content-Type: application/json' -d '{}'
+curl http://127.0.0.1:8000/api/embeddings/status
+
+curl -X POST http://127.0.0.1:8000/api/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "Add caching to the user service.", "strategy": "semantic"}'
+```
+
+`strategy` is `keyword` (default) or `semantic`. Semantic retrieval needs an index; if
+none exists it returns `409` explaining how to build one, rather than an empty list that
+would look like "nothing matched".
+
+### Why an abstraction rather than a model
+
+The project must run for someone with no API key, no GPU and no network. So there are two
+providers behind one interface:
+
+| Provider | Selected when | Captures meaning | Cost |
+| -------- | ------------- | ---------------- | ---- |
+| `local` | default, no key configured | **No** | Free, instant, deterministic |
+| `hosted` | `DEVMEMORY_EMBEDDING_API_KEY` + `MODEL` set | Yes | Network call per query and per index run |
+
+Set `DEVMEMORY_EMBEDDING_PROVIDER` to `local` or `hosted` to force one.
+
+### The local provider, stated honestly
+
+It is a real technique — the hashing trick over tokens and character n-grams — not a
+stub. The vectors are genuine, reproducible, and cosine similarity between them means
+something. What it **cannot** do is understand meaning, and the code says so in three
+places: `captures_meaning: false` in every response, a note on every result, and a
+warning in the UI.
+
+What it does do:
+
+| Behaviour | Measured |
+| --------- | -------- |
+| Shared words | `"disabled Redis caching"` vs `"Redis caching was disabled"` → **0.72** |
+| Morphology (the edge over keyword) | `"caching"` vs `"cache"` → **0.62** |
+| Unrelated texts | `"kubernetes helm"` vs `"card numbers logged"` → **0.00** |
+| A true paraphrase | `"Add caching to the user service"` vs the snapshot memory → **0.02** |
+
+That last row is the point: a paraphrase still scores near zero. **Only a hosted model
+fixes it.**
+
+### The measurement that matters
+
+Running both strategies over the sample dataset for `"Add caching to the user service."`:
+
+| Rank | Memory | Keyword | Semantic (local) |
+| ---- | ------ | ------- | ---------------- |
+| 1 | The user service uses MySQL for persistence. | 2.173 | 0.479 |
+| 2 | The user service uses PostgreSQL 15 for persistence. | 2.035 | 0.427 |
+| 3 | The user service uses PostgreSQL 15 for persistence. | 2.035 | 0.427 |
+| 4 | **We disabled Redis caching for user records…** | 1.880 | 0.336 |
+| 5 | Redis caching was disabled for user records… | 1.880 | 0.329 |
+| 6 | Use structured logging with request IDs… | 1.133 | 0.268 |
+
+**Identical set, identical order.** On this dataset the local provider buys nothing over
+BM25, because it is essentially lexical matching with a little morphology tolerance. The
+ranking failure from Phase 5 is untouched: the genuinely relevant memory still sits at
+#4, behind two database decisions.
+
+That is the honest result, and it is left in the README rather than tuned away. It also
+sets up the benchmark: the claim "semantic search improves retrieval" is currently
+**unproven**, and Phase 7 exists to test it — first with the local provider (where we
+expect no gain), then again after a hosted key is configured (where we expect the memory
+to climb).
+
+### Two implementation details worth knowing
+
+- **Vectors live in their own table**, keyed by `(memory_id, provider, model)`. Comparing
+  strategies needs several embeddings of one memory side by side, and re-indexing with a
+  new model must not overwrite the old vectors.
+- **Every vector stores a content hash.** If a memory is edited, its vector is detected as
+  stale and re-embedded instead of silently returning neighbours of text that no longer
+  exists. Deleting a memory cascades to its vectors.
+
+### Relevance floor
+
+Cosine similarity below `0.10` is treated as no match. Hashing cannot eliminate bucket
+collisions — at 256 dimensions one collision gave an unrelated card-number memory a
+similarity of `0.20`, which is a false positive in a tool built on trust. The default
+width is therefore `1024` dimensions (where an unrelated pair scores `0.00`), plus the
+floor for the collisions that remain. Raise `DEVMEMORY_SEMANTIC_MIN_SIMILARITY` to trade
+recall for precision.
+
+### Embedding configuration
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `DEVMEMORY_EMBEDDING_PROVIDER` | `auto` | `auto`, `local`, or `hosted` |
+| `DEVMEMORY_EMBEDDING_API_KEY` | empty | Required for `hosted` |
+| `DEVMEMORY_EMBEDDING_MODEL` | empty | Required for `hosted` |
+| `DEVMEMORY_EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint |
+| `DEVMEMORY_EMBEDDING_DIMENSIONS` | `1024` | Width of the local vector |
+| `DEVMEMORY_EMBEDDING_BATCH_SIZE` | `32` | Texts per hosted request |
+| `DEVMEMORY_EMBEDDING_TIMEOUT` | `20` | Hosted request timeout, seconds |
+| `DEVMEMORY_SEMANTIC_MIN_SIMILARITY` | `0.10` | Below this, no match |
+
+To use a hosted model:
+
+```bash
+export DEVMEMORY_EMBEDDING_API_KEY=sk-...
+export DEVMEMORY_EMBEDDING_MODEL=text-embedding-3-small
+# then rebuild the index for the new provider
+curl -X POST http://127.0.0.1:8000/api/embeddings/index \
+  -H 'Content-Type: application/json' -d '{"force": true}'
+```
+
+Vectors from different providers coexist, so the benchmark can compare them on the same
+memories without re-indexing between runs. **The hosted path has been verified against a
+stub server that speaks the same protocol — it has not been run against a real model in
+this environment.**
 
 ## UI architecture notes
 
