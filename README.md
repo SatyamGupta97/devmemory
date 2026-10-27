@@ -163,6 +163,15 @@ modules can import the service as `from app.main import app`.
 | -------- | ------- | ------- |
 | `DEVMEMORY_DB_PATH` | `backend/devmemory.db` | SQLite file location. Tests point this at a temp file. |
 | `DEVMEMORY_CORS_ORIGINS` | Vite dev server origins | Comma-separated browser origins allowed to call the API. |
+| `DEVMEMORY_EMBEDDING_PROVIDER` | `auto` | `auto`, `local`, `hosted` or `gemini`. Everything except `local` needs a key. |
+| `DEVMEMORY_EMBEDDING_API_KEY` | — | Key for the embedding model. |
+| `DEVMEMORY_EMBEDDING_MODEL` | — | e.g. `gemini-embedding-2`; required for `hosted`, optional for `gemini`. |
+| `DEVMEMORY_EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint for the `hosted` provider. |
+| `DEVMEMORY_SEMANTIC_MIN_SIMILARITY` | `0.10` | Cosine floor; below it a memory is treated as no match. |
+| `DEVMEMORY_LLM_PROVIDER` | `auto` | `auto` or `local`; `local` is refused, because no on-device model ships here. |
+| `DEVMEMORY_LLM_API_KEY` | — | Key for the analysis model. |
+| `DEVMEMORY_LLM_MODEL` | — | e.g. `gemini-3.5-flash`. |
+| `DEVMEMORY_LLM_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible chat endpoint. |
 
 Frontend variables must be prefixed `VITE_` to reach the browser, so never put secrets here:
 
@@ -170,8 +179,26 @@ Frontend variables must be prefixed `VITE_` to reach the browser, so never put s
 | -------- | ------- | ------- |
 | `VITE_API_BASE_URL` | `http://127.0.0.1:8000` | Where the UI looks for the API |
 
-Model provider settings arrive in a later phase. Nothing is required today, and the app
-must remain usable without any model access.
+No model access is required. Without a key the app falls back to local hashed vectors
+and the deterministic checks, and says so in the UI.
+
+### Using Gemini
+
+Both providers speak an OpenAI-compatible interface, so Gemini needs only a base URL:
+
+```bash
+export DEVMEMORY_EMBEDDING_PROVIDER=gemini
+export DEVMEMORY_EMBEDDING_API_KEY=...            # Google AI Studio key
+export DEVMEMORY_EMBEDDING_MODEL=gemini-embedding-2
+export DEVMEMORY_LLM_API_KEY=$DEVMEMORY_EMBEDDING_API_KEY
+export DEVMEMORY_LLM_MODEL=gemini-3.5-flash
+export DEVMEMORY_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+cd backend && .venv/bin/uvicorn app.main:app --port 8000
+```
+
+Then **Index memories** in the Retrieval tab rebuilds the vectors with the hosted model.
+Switching providers requires a re-index: a 1024-dimension local vector cannot be compared
+with a 3072-dimension hosted one, so stale vectors are marked and skipped, not mixed in.
 
 ### CORS
 
