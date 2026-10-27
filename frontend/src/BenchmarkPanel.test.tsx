@@ -143,6 +143,13 @@ const STATUS = {
   stale_memories: 0,
 };
 
+const AI_STATUS_MOCK = {
+  available: false,
+  provider: "none",
+  model: "",
+  reason: "AI-assisted analysis is not configured.",
+};
+
 function mockApi(handlers: Record<string, () => Response>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${new URL(String(input)).pathname}`;
@@ -234,6 +241,7 @@ describe("retrieval benchmark", () => {
         return json(body.strategy === "semantic" ? semanticReport() : report());
       }
       if (key === "GET /api/memories") return json([memory()]);
+      if (key === "GET /api/health/ai/status") return json(AI_STATUS_MOCK);
       if (key === "GET /api/embeddings/status") return json(STATUS);
       if (key === "GET /api/benchmark") return json(DEFINITION);
       throw new Error(`Unhandled: ${key}`);
@@ -266,6 +274,7 @@ describe("retrieval benchmark", () => {
           : json(report());
       }
       if (key === "GET /api/memories") return json([memory()]);
+      if (key === "GET /api/health/ai/status") return json(AI_STATUS_MOCK);
       if (key === "GET /api/embeddings/status") return json(STATUS);
       if (key === "GET /api/benchmark") return json(DEFINITION);
       throw new Error(`Unhandled: ${key}`);

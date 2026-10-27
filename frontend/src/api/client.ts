@@ -5,6 +5,8 @@
  */
 
 import type {
+  AiAnalysisReport,
+  AiStatus,
   BenchmarkDefinition,
   BenchmarkReport,
   EmbeddingStatus,
@@ -171,6 +173,17 @@ export async function retrieveMemories(input: {
   return request<RetrievalResult>("/api/retrieve", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export async function getAiStatus(): Promise<AiStatus> {
+  return request<AiStatus>("/api/health/ai/status");
+}
+
+export async function runAiAnalysis(project?: string): Promise<AiAnalysisReport> {
+  return request<AiAnalysisReport>("/api/health/ai", {
+    method: "POST",
+    body: JSON.stringify({ project: project || null }),
   });
 }
 

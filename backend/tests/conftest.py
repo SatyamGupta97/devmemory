@@ -26,6 +26,11 @@ def isolated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("DEVMEMORY_EMBEDDING_PROVIDER", "local")
     monkeypatch.delenv("DEVMEMORY_EMBEDDING_API_KEY", raising=False)
     monkeypatch.delenv("DEVMEMORY_EMBEDDING_MODEL", raising=False)
+    # Same for the language model: a developer with a real key in their shell
+    # must not cause the suite to make a network call.
+    monkeypatch.delenv("DEVMEMORY_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DEVMEMORY_LLM_MODEL", raising=False)
+    monkeypatch.setenv("DEVMEMORY_LLM_PROVIDER", "auto")
     return path
 
 

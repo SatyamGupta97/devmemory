@@ -74,12 +74,22 @@ const DEFAULT_STATUS = {
   stale_memories: 0,
 };
 
+const AI_STATUS_MOCK = {
+  available: false,
+  provider: "none",
+  model: "",
+  reason: "AI-assisted analysis is not configured.",
+};
+
 function mockApi(handlers: Record<string, () => Response>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     const key = `${method} ${new URL(String(input)).pathname}`;
     const handler = handlers[key];
     if (!handler) {
+      if (key === "GET /api/health/ai/status") {
+        return json(AI_STATUS_MOCK);
+      }
       if (key === "GET /api/embeddings/status") {
         return json(DEFAULT_STATUS);
       }

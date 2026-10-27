@@ -70,6 +70,13 @@ const DEFAULT_STATUS = {
   stale_memories: 0,
 };
 
+const AI_STATUS_MOCK = {
+  available: false,
+  provider: "none",
+  model: "",
+  reason: "AI-assisted analysis is not configured.",
+};
+
 function mockApi(handlers: Record<string, () => Response>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${new URL(String(input)).pathname}`;
@@ -77,6 +84,9 @@ function mockApi(handlers: Record<string, () => Response>) {
     if (!handler) {
       // The retrieval panel asks for index status on mount; unrelated tests do
       // not care, so answer with a default rather than failing the request.
+      if (key === "GET /api/health/ai/status") {
+        return json(AI_STATUS_MOCK);
+      }
       if (key === "GET /api/embeddings/status") {
         return json(DEFAULT_STATUS);
       }

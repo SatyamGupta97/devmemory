@@ -214,3 +214,42 @@ export interface BenchmarkReport {
   cases: BenchmarkCaseResult[];
   notes: string[];
 }
+
+/** AI-assisted analysis types. */
+
+export type AiIssueType =
+  | "semantic_duplicate"
+  | "contradiction"
+  | "misclassification"
+  | "merge_suggestion";
+
+export interface AiFinding {
+  id: string;
+  issue_type: AiIssueType;
+  severity: Severity;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  memory_ids: string[];
+  suggested_action: string;
+  uncertainty: string;
+  source: string;
+}
+
+export interface AiAnalysisReport {
+  generated_at: string;
+  provider: string;
+  model: string;
+  analyzed_memories: number;
+  excluded_memories: string[];
+  findings: AiFinding[];
+  rejected: string[];
+  notes: string[];
+}
+
+export interface AiStatus {
+  available: boolean;
+  provider: string;
+  model: string;
+  reason: string | null;
+}

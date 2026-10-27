@@ -378,18 +378,44 @@ def main() -> int:
     summary = report.get("summary", {}) if isinstance(report, dict) else {}
     results.check("reports a strategy", "keyword-bm25", summary.get("strategy"),
                   summary.get("strategy") == "keyword-bm25")
-    results.check("every query was scored", True,
-                  f"{summary.get('valid_queries')}/{summary.get('query_count')}",
-                  summary.get("valid_queries") == summary.get("query_count"))
+    # Whether queries can be scored depends on whether the sample dataset is
+    # imported, which is the user's data state rather than an API contract. Assert
+    # coherence in both states instead of assuming one.
+    valid_queries = summary.get("valid_queries")
+    query_count = summary.get("query_count")
+    notes = " ".join(report.get("notes", [])) if isinstance(report, dict) else ""
+    if valid_queries == 0:
+        results.check("explains that nothing could be scored", True,
+                      "Import data/sample_memories.json" in notes,
+                      "Import data/sample_memories.json" in notes)
+    else:
+        results.check("some queries were scored", True,
+                      f"{valid_queries}/{query_count}",
+                      isinstance(valid_queries, int) and valid_queries > 0)
     for metric in ("mean_precision_at_k", "mean_recall_at_k", "mrr"):
         value = summary.get(metric)
         results.check(f"{metric} is a ratio", True, value,
-                      isinstance(value, (int, float)) and 0.0 <= value <= 1.0)
+                      value is None or (isinstance(value, (int, float)) and 0.0 <= value <= 1.0))
 
     status, again = call(base, "POST", "/api/benchmark/run", {"strategy": "keyword"})
     results.check("results are reproducible", True,
                   again.get("summary") == summary if isinstance(again, dict) else False,
                   isinstance(again, dict) and again.get("summary") == summary)
+
+    print("\n25. AI-assisted analysis degrades honestly when unconfigured")
+    status, body = call(base, "GET", "/api/health/ai/status")
+    results.check("GET /api/health/ai/status", 200, status, status == 200)
+    available = body.get("available") if isinstance(body, dict) else None
+    results.check("states availability", True, available, isinstance(available, bool))
+    if not available:
+        results.check("explains why it is unavailable", True,
+                      bool(body.get("reason")), bool(body.get("reason")))
+        status, _ = call(base, "POST", "/api/health/ai", {})
+        results.check("POST /api/health/ai -> 409", 409, status, status == 409)
+        status, _ = call(base, "GET", "/api/health")
+        results.check("deterministic check still works", 200, status, status == 200)
+    else:
+        print("  (a model is configured; skipping the not-configured assertions)")
 
     return results.summary()
 

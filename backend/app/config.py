@@ -199,3 +199,46 @@ def benchmark_path() -> Path:
 def benchmark_default_k() -> int:
     """Fallback cut-off when a benchmark query does not specify one."""
     return _int_env("DEVMEMORY_BENCHMARK_K", 5)
+
+
+# --- language model ---------------------------------------------------------
+#
+# AI-assisted analysis is strictly optional. Without a key the deterministic
+# health check is the whole product, and the AI endpoint says so plainly instead
+# of degrading into a fake result.
+
+def llm_provider_name() -> str:
+    return os.environ.get("DEVMEMORY_LLM_PROVIDER", "auto").strip().lower()
+
+
+def llm_api_key() -> str:
+    return os.environ.get("DEVMEMORY_LLM_API_KEY", "").strip()
+
+
+def llm_model() -> str:
+    return os.environ.get("DEVMEMORY_LLM_MODEL", "").strip()
+
+
+def llm_base_url() -> str:
+    return os.environ.get(
+        "DEVMEMORY_LLM_BASE_URL", "https://api.openai.com/v1"
+    ).strip().rstrip("/")
+
+
+def llm_timeout_seconds() -> float:
+    return _float_env("DEVMEMORY_LLM_TIMEOUT", 45.0)
+
+
+def llm_max_memories() -> int:
+    """How many memories to put in one prompt.
+
+    A cap rather than paging: the request is a single analysis pass, and
+    silently analysing a truncated collection while reporting it as complete
+    would be misleading. The response states how many were sent.
+    """
+    return _int_env("DEVMEMORY_LLM_MAX_MEMORIES", 60)
+
+
+def llm_max_findings() -> int:
+    """Upper bound on findings accepted from one model response."""
+    return _int_env("DEVMEMORY_LLM_MAX_FINDINGS", 20)

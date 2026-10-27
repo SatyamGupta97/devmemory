@@ -1,8 +1,10 @@
 import type { HealthFinding, HealthReport } from "../types";
+import { AiInsights } from "./AiInsights";
 
 interface Props {
   report: HealthReport;
   onSelectMemory: (id: string) => void;
+  projectFilter: string;
 }
 
 const SEVERITY_LABEL: Record<HealthFinding["severity"], string> = {
@@ -83,7 +85,7 @@ function FindingCard({
   );
 }
 
-export function HealthPanel({ report, onSelectMemory }: Props) {
+export function HealthPanel({ report, onSelectMemory, projectFilter }: Props) {
   const summaryEntries = Object.entries(report.summary);
 
   return (
@@ -141,6 +143,8 @@ export function HealthPanel({ report, onSelectMemory }: Props) {
           </ul>
         </details>
       )}
+
+      <AiInsights projectFilter={projectFilter} />
     </section>
   );
 }

@@ -277,6 +277,7 @@ export default function App() {
       {healthReport && (
         <HealthPanel
           report={healthReport}
+          projectFilter={projectFilter}
           onSelectMemory={(id) => {
             setSelectedId(id);
             setMode("browse");

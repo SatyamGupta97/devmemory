@@ -185,6 +185,9 @@ class HealthFinding(BaseModel):
     memory_ids: list[str]
     suggested_action: str
     uncertainty: str | None = None
+    # Distinguishes what a rule asserted from what a model suggested. A user
+    # must never have to guess which one they are reading.
+    source: str = "rule"
 
 
 class HealthReport(BaseModel):
@@ -377,3 +380,61 @@ class BenchmarkReport(BaseModel):
     summary: BenchmarkSummary
     cases: list[BenchmarkCaseResult]
     notes: list[str]
+
+
+# --- AI-assisted analysis ---------------------------------------------------
+
+
+class AiIssueType(str, Enum):
+    """What the model is allowed to report.
+
+    A closed set: anything else in the response is rejected rather than mapped
+    onto something plausible.
+    """
+
+    SEMANTIC_DUPLICATE = "semantic_duplicate"
+    CONTRADICTION = "contradiction"
+    MISCLASSIFICATION = "misclassification"
+    MERGE_SUGGESTION = "merge_suggestion"
+
+
+class AiFinding(BaseModel):
+    """One validated model suggestion.
+
+    Every field is required and checked. A memory id the model invented is not
+    quietly dropped at display time: the whole finding is rejected, and the
+    rejection is reported.
+    """
+
+    id: str
+    issue_type: AiIssueType
+    severity: Severity
+    title: str
+    explanation: str
+    evidence: list[str]
+    memory_ids: list[str]
+    suggested_action: str
+    uncertainty: str
+    source: str = "model"
+
+
+class AiAnalysisRequest(BaseModel):
+    project: str | None = Field(default=None, max_length=100)
+
+
+class AiAnalysisReport(BaseModel):
+    generated_at: datetime
+    provider: str
+    model: str
+    analyzed_memories: int
+    excluded_memories: list[str]
+    findings: list[AiFinding]
+    rejected: list[str]
+    notes: list[str]
+
+
+class AiStatus(BaseModel):
+    available: bool
+    provider: str
+    model: str
+    reason: str | None = None
