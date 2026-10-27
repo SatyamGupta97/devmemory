@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ApiError,
   API_BASE_URL,
   createMemory,
   deleteMemory,
+  describeError,
   getHealthReport,
   importMemories,
   listMemories,
@@ -14,6 +14,7 @@ import { ImportPanel } from "./components/ImportPanel";
 import { MemoryDetail } from "./components/MemoryDetail";
 import { MemoryForm } from "./components/MemoryForm";
 import { MemoryList } from "./components/MemoryList";
+import { RetrievalPanel } from "./components/RetrievalPanel";
 import { StatsBar } from "./components/StatsBar";
 import { StatusMessage } from "./components/StatusMessage";
 import type {
@@ -25,12 +26,6 @@ import type {
 } from "./types";
 
 type Mode = "browse" | "create" | "edit";
-
-function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  if (error instanceof Error) return error.message;
-  return "Something went wrong.";
-}
 
 export default function App() {
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -65,7 +60,7 @@ export default function App() {
       setMemories(data);
     } catch (error) {
       setMemories([]);
-      setLoadError(errorMessage(error));
+      setLoadError(describeError(error));
     } finally {
       setLoading(false);
     }
@@ -105,7 +100,7 @@ export default function App() {
     try {
       await action();
     } catch (error) {
-      setActionError(errorMessage(error));
+      setActionError(describeError(error));
     } finally {
       setBusy(false);
     }
@@ -161,7 +156,7 @@ export default function App() {
       const report = await getHealthReport(projectFilter || undefined);
       setHealthReport(report);
     } catch (error) {
-      setHealthError(errorMessage(error));
+      setHealthError(describeError(error));
     } finally {
       setHealthLoading(false);
     }
@@ -343,6 +338,14 @@ export default function App() {
               Select a memory to inspect its metadata, edit it, or delete it.
             </p>
           )}
+
+          <RetrievalPanel
+            projectFilter={projectFilter}
+            onSelectMemory={(id) => {
+              setSelectedId(id);
+              setMode("browse");
+            }}
+          />
 
           <ImportPanel busy={busy} onImport={(entries) => void handleImport(entries)} />
         </section>

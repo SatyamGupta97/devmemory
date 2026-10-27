@@ -106,3 +106,22 @@ def low_confidence_threshold() -> float:
 def vague_content_length() -> int:
     """Content shorter than this is too short to carry useful meaning."""
     return _int_env("DEVMEMORY_HEALTH_VAGUE_CONTENT_LENGTH", 30)
+
+
+# --- retrieval --------------------------------------------------------------
+#
+# BM25 defaults. k1 controls how quickly repeated terms stop adding score, and
+# b controls how strongly long memories are penalised. These are the values
+# from the original BM25 literature and are what a keyword baseline is normally
+# measured against, so they stay at the standard unless there is evidence.
+
+def bm25_k1() -> float:
+    return _float_env("DEVMEMORY_RETRIEVAL_K1", 1.2)
+
+
+def bm25_b() -> float:
+    return _float_env("DEVMEMORY_RETRIEVAL_B", 0.75)
+
+
+def default_result_limit() -> int:
+    return _int_env("DEVMEMORY_RETRIEVAL_LIMIT", 10)

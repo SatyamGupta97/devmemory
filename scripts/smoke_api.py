@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end smoke test for the Phase 2 memory APIs.
+"""End-to-end smoke test for the DevMemory API.
 
 Runs against a live server using only the standard library, so there is nothing
 to install. Every step prints what it expected and what it got.
@@ -9,8 +9,8 @@ Usage:
     uvicorn app.main:app --port 8000
 
     # in another
-    python3 scripts/smoke_phase2.py
-    python3 scripts/smoke_phase2.py --base-url http://127.0.0.1:8013
+    python3 scripts/smoke_api.py
+    python3 scripts/smoke_api.py --base-url http://127.0.0.1:8013
 
 Each run uses its own project namespace (demo-<random>), so it is safe to run
 repeatedly and it never touches your real memories.
@@ -266,6 +266,51 @@ def main() -> int:
     results.check("blank content -> 422", 422, status, status == 422)
     status, _ = call(base, "POST", "/api/memories", {**memories[0], "confidence": 1.5})
     results.check("confidence 1.5 -> 422", 422, status, status == 422)
+
+    print("\n15. Keyword retrieval")
+    status, body = call(base, "POST", "/api/retrieve", {"query": "redis caching", "project": project})
+    results.check("POST /api/retrieve", 200, status, status == 200)
+    results.check("uses the keyword strategy", "keyword-bm25",
+                  body.get("strategy") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and body.get("strategy") == "keyword-bm25")
+    matches = body.get("matches", []) if isinstance(body, dict) else []
+    results.check("found at least one match", True, len(matches), len(matches) >= 1)
+    if matches:
+        top = matches[0]
+        total = sum(t["contribution"] for t in top["matched_terms"])
+        results.check("score equals its term contributions", round(top["score"], 2),
+                      round(total, 2), abs(top["score"] - total) < 0.01)
+        results.check("explains why it matched", True,
+                      "caching" in top["explanation"], "caching" in top["explanation"])
+
+    print("\n16. Retrieval respects project boundaries")
+    status, body = call(base, "POST", "/api/retrieve",
+                        {"query": "postgresql", "project": "no-such-project"})
+    results.check("unknown project -> empty result", 200, status, status == 200)
+    results.check("no matches outside the project", 0,
+                  body.get("returned") if isinstance(body, dict) else None,
+                  isinstance(body, dict) and body.get("returned") == 0)
+
+    print("\n17. Retrieval rejects a meaningless query")
+    status, _ = call(base, "POST", "/api/retrieve", {"query": "the and is"})
+    results.check("stopwords only -> 422", 422, status, status == 422)
+
+    print("\n18. Retrieval changes nothing")
+    status, before = call(base, "GET", f"/api/memories?project={project}")
+    call(base, "POST", "/api/retrieve", {"query": "caching", "project": project})
+    status, after = call(base, "GET", f"/api/memories?project={project}")
+    results.check("memory count unchanged", len(before), len(after),
+                  len(before) == len(after))
+
+    print("\n19. Health check is read-only")
+    status, report = call(base, "GET", f"/api/health?project={project}")
+    results.check("GET /api/health", 200, status, status == 200)
+    results.check("declares a deterministic analyzer", "deterministic-rules",
+                  report.get("analyzer") if isinstance(report, dict) else None,
+                  isinstance(report, dict) and report.get("analyzer") == "deterministic-rules")
+    status, after_health = call(base, "GET", f"/api/memories?project={project}")
+    results.check("health check wrote nothing", len(before), len(after_health),
+                  len(before) == len(after_health))
 
     return results.summary()
 

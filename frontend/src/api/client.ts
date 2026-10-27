@@ -11,6 +11,7 @@ import type {
   MemoryCategory,
   MemoryCreateInput,
   MemoryUpdateInput,
+  RetrievalResult,
 } from "../types";
 
 export const API_BASE_URL =
@@ -25,6 +26,17 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+/** Turn any thrown value into a message safe to show a user.
+ *
+ * Lives here rather than in a component so every caller describes failures the
+ * same way, whether they use the request helper or not.
+ */
+export function describeError(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return "Something went wrong.";
 }
 
 /** A FastAPI 422 body: one entry per invalid field. */
@@ -142,6 +154,17 @@ export async function importMemories(
   return request<ImportResult>("/api/memories/import", {
     method: "POST",
     body: JSON.stringify({ memories }),
+  });
+}
+
+export async function retrieveMemories(input: {
+  query: string;
+  project?: string;
+  limit?: number;
+}): Promise<RetrievalResult> {
+  return request<RetrievalResult>("/api/retrieve", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }
 

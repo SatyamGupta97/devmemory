@@ -93,3 +93,30 @@ export interface HealthReport {
   findings: HealthFinding[];
   limitations: string[];
 }
+
+/** Retrieval types, mirroring the backend's retrieval schemas. */
+
+export interface MatchedTerm {
+  term: string;
+  idf: number;
+  term_frequency: number;
+  contribution: number;
+}
+
+export interface RetrievalMatch {
+  memory: Memory;
+  score: number;
+  matched_terms: MatchedTerm[];
+  explanation: string;
+}
+
+export interface RetrievalResult {
+  query: string;
+  strategy: string;
+  project: string | null;
+  considered: number;
+  returned: number;
+  matches: RetrievalMatch[];
+  unmatched_query_terms: string[];
+  notes: string[];
+}

@@ -5,7 +5,7 @@ How to verify each part of DevMemory. Three layers, cheapest first:
 | Layer | Command | Catches |
 | ----- | ------- | ------- |
 | Unit / integration | `pytest` (backend), `npm test` (frontend) | Logic errors, regressions |
-| API contract | `scripts/smoke_phase2.py` | Endpoints behaving differently than documented |
+| API contract | `scripts/smoke_api.py` | Endpoints behaving differently than documented |
 | Wiring | `scripts/check_frontend_wiring.py` | Frontend and backend unable to talk |
 | Manual | The checklists below | Anything a machine cannot judge: layout, wording, feel |
 
@@ -62,12 +62,13 @@ npm run build      # production build
 With the server running on port 8000:
 
 ```bash
-python3 scripts/smoke_phase2.py
+python3 scripts/smoke_api.py
 ```
 
-28 checks over the whole API surface. Uses its own `demo-<epoch>` project namespace,
-so it never touches your real memories. Exit code `0` = pass, `1` = a check failed,
-`2` = could not reach the server.
+Covers the whole API surface: CRUD, filters, supersede rules, atomic import,
+retrieval and the health check. Uses its own `demo-<random>` project namespace, so it
+never touches your real memories. Exit code `0` = pass, `1` = a check failed, `2` =
+could not reach the server.
 
 ---
 

@@ -15,10 +15,10 @@ retrieved for a given coding task.
 
 ## Status
 
-Phase 4 complete: a deterministic health check inspects the memory collection for
-duplicates, near-duplicates, contradictions, stale entries and weak metadata. Every
-finding carries the evidence behind it. A React UI covers the full memory lifecycle
-against the live API.
+Phase 5 complete: a keyword retrieval baseline ranks memories against a coding task and
+explains every point of every score. A deterministic health check inspects the
+collection for duplicates, contradictions, stale entries and weak metadata. A React UI
+covers the full memory lifecycle, the health check, and a retrieval playground.
 
 ## Repository layout
 
@@ -33,6 +33,7 @@ devmemory/
       api/            HTTP routers
       services/       Business logic
         health.py       deterministic health analysis
+        retrieval.py    BM25 keyword ranking
         text.py         normalisation and similarity
     tests/            pytest suite
     requirements.txt
@@ -47,7 +48,7 @@ devmemory/
   data/
     sample_memories.json
   scripts/
-    smoke_phase2.py              end-to-end API checks
+    smoke_api.py              end-to-end API checks
     check_frontend_wiring.py     frontend <-> backend integration checks
   docs/
     testing.md                   test guide and manual checklists
@@ -86,7 +87,7 @@ cd backend && source .venv/bin/activate && pytest -v
 cd frontend && npm test && npm run typecheck
 
 # API contract, with the server running
-python3 scripts/smoke_phase2.py
+python3 scripts/smoke_api.py
 
 # frontend <-> backend wiring, with both running
 python3 scripts/check_frontend_wiring.py
@@ -172,6 +173,7 @@ CORS is not authentication: it constrains browsers, not other clients.
 | `PATCH` | `/api/memories/{id}` | Partial update |
 | `DELETE` | `/api/memories/{id}` | Delete (`204`), `404` if absent, `409` if referenced |
 | `GET` | `/api/health` | Run the health check and return the findings |
+| `POST` | `/api/retrieve` | Rank memories for a coding task, with reasons |
 
 `GET /api/memories` accepts `project` and `category` query filters. Unknown values
 return an empty list for `project`; an invalid `category` returns `422`.
@@ -241,10 +243,16 @@ content is rejected by both Pydantic and a SQLite `CHECK` constraint.
 
 ## Sample data
 
-`data/sample_memories.json` holds 14 memories across two projects, seeded with the
-problems later phases detect: an exact duplicate, a near-duplicate, a contradictory
-database decision, a superseded-vs-current queue decision, missing metadata, and a stale
-runtime constraint. A test asserts it always validates against the API schema.
+`data/sample_memories.json` holds 19 memories across three namespaces, seeded with every
+problem the tool detects: an exact duplicate, a near-duplicate, three contradictions
+(database choice, queue technology, Python version), deliberately old entries, weak
+sources, a placeholder namespace, vague content, and one memory containing
+instruction-like text.
+
+It also holds one memory that is semantically relevant to caching but shares no word with
+the usual caching query — so the keyword baseline's blind spot is demonstrable rather than
+theoretical, and Phase 6 has something to beat. A test asserts the file always validates
+against the API schema.
 
 ## Memory health check
 
@@ -311,6 +319,14 @@ non-contradiction pair scores `0.60`, so `0.78` separates them. Override any of 
 | `DEVMEMORY_HEALTH_LOW_CONFIDENCE` | `0.5` | Confidence at or below which a decision is doubtful |
 | `DEVMEMORY_HEALTH_VAGUE_CONTENT_LENGTH` | `30` | Content shorter than this is too vague |
 
+Retrieval:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `DEVMEMORY_RETRIEVAL_K1` | `1.2` | BM25 term-saturation parameter |
+| `DEVMEMORY_RETRIEVAL_B` | `0.75` | BM25 length-normalisation parameter |
+| `DEVMEMORY_RETRIEVAL_LIMIT` | `10` | Default number of results |
+
 ### Memory timestamps
 
 `POST /api/memories` and the import endpoint accept an optional `created_at`. Real
@@ -328,6 +344,78 @@ time.
   "created_at": "2023-05-19T09:00:00+00:00"
 }
 ```
+
+## Retrieval
+
+`POST /api/retrieve` ranks memories against a coding task and explains the result.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "Add caching to the user service.", "project": "payments-api", "limit": 5}'
+```
+
+The response carries, for every match:
+
+| Field | Meaning |
+| ----- | ------- |
+| `score` | BM25 relevance. Comparable within one query only |
+| `matched_terms` | Every query term that hit, with its `idf`, `term_frequency` and `contribution` |
+| `explanation` | A sentence naming the terms and the largest contributor |
+| `memory` | The full memory, including `status` and `superseded_by` |
+
+At the top level, `unmatched_query_terms` names the query terms that found nothing —
+which is how the tool explains a *miss* rather than quietly returning a short list.
+
+**The score is the sum of its term contributions.** That is a tested invariant, so a
+reader can check the arithmetic by hand instead of trusting a number.
+
+### Why BM25, and why these parameters
+
+BM25 is the standard relevance baseline: anything cleverer has to beat it to earn its
+place. `k1 = 1.2` and `b = 0.75` are the literature defaults, kept unchanged so the
+baseline is an honest comparison rather than one tuned to flatter the demo. Both are
+overridable via `DEVMEMORY_RETRIEVAL_K1` and `DEVMEMORY_RETRIEVAL_B`.
+
+### The failure this baseline has, on purpose
+
+For the query `"Add caching to the user service."`, the actual result is:
+
+| Rank | Memory | Score |
+| ---- | ------ | ----- |
+| 1 | The user service uses MySQL for persistence. | 2.173 |
+| 2 | The user service uses PostgreSQL 15 for persistence. | 2.035 |
+| 3 | The user service uses PostgreSQL 15 for persistence. | 2.035 |
+| 4 | **We disabled Redis caching for user records…** | **1.880** |
+
+The memory that is actually relevant to caching ranks **fourth**, behind two database
+decisions that have nothing to do with the task. And this memory:
+
+> We removed the in-memory account snapshot because balances could go stale after writes.
+
+scores **zero** and is never returned at all, because it shares no word with the query.
+
+Both are real limitations of keyword search, and both are left in place deliberately:
+
+- **Common words outrank specific ones.** "user" and "service" appear in many memories,
+  so the memories that repeat them score well regardless of whether they answer the task.
+  BM25's length normalisation also favours short memories.
+- **Meaning without shared words is invisible.** "caching" and "snapshot" describe the
+  same concern; a keyword index cannot know that.
+
+Fixing these is the job of semantic retrieval, and *proving* the fix is the job of the
+benchmark. Tuning BM25 until the demo looked right would have destroyed both.
+
+### Other deliberate choices
+
+- **Superseded memories are returned, and labelled.** Hiding a retired decision would
+  hide exactly the failure this tool exists to expose.
+- **Queries made only of stopwords are rejected** with `422`, not answered with an
+  arbitrary list.
+- **An unknown project returns an empty result**, not an error: an empty namespace is a
+  valid answer.
+- **Nothing is written.** Retrieval is a read, and a test asserts the collection is
+  unchanged afterwards.
 
 ## UI architecture notes
 

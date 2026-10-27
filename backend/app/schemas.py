@@ -197,3 +197,52 @@ class HealthReport(BaseModel):
     summary: dict[str, int]
     findings: list[HealthFinding]
     limitations: list[str]
+
+
+# --- retrieval --------------------------------------------------------------
+
+
+class RetrievalRequest(BaseModel):
+    """A coding task to look memories up for."""
+
+    query: str = Field(min_length=1, max_length=500)
+    project: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Restrict the search to one namespace.",
+    )
+    limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_query(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class MatchedTerm(BaseModel):
+    """Why one query term contributed to a memory's score."""
+
+    term: str
+    idf: float
+    term_frequency: int
+    contribution: float
+
+
+class RetrievalMatch(BaseModel):
+    memory: Memory
+    score: float
+    matched_terms: list[MatchedTerm]
+    explanation: str
+
+
+class RetrievalResult(BaseModel):
+    query: str
+    strategy: str
+    project: str | None
+    considered: int
+    returned: int
+    matches: list[RetrievalMatch]
+    unmatched_query_terms: list[str]
+    notes: list[str]
